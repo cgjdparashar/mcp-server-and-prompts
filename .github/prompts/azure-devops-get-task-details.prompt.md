@@ -5,6 +5,7 @@ Goal: Retrieve comprehensive details for a single Azure DevOps work item (task) 
 Preconditions:
 - MCP Azure DevOps server is configured and authenticated.
 - Required environment variables: `AZDO_ORG_URL`, `AZDO_PROJECT`.
+- **Setup Script**: Run `scripts/prompts/set-azure-devops-env.ps1` to automatically configure all required environment variables.
 - Input parameter: `WORK_ITEM_ID` (numeric Azure DevOps work item ID).
 
 Instructions:
@@ -39,5 +40,6 @@ Expected Output:
 - `notes`: string  // additional context or errors
 
 Example Usage Notes:
-- Set `AZDO_ORG_URL` and `AZDO_PROJECT`, then run this prompt in your MCP client providing `WORK_ITEM_ID`.
+- Run the setup script first: `. .\scripts\prompts\set-azure-devops-env.ps1`
+- Then run this prompt in your MCP client providing `WORK_ITEM_ID`.
 - For VS Code MCP clients, trigger this file directly and pass variables per client UX.

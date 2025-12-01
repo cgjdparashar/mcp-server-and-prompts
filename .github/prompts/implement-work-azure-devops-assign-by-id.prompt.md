@@ -5,6 +5,7 @@ Goal: Fetch details for a specific Azure DevOps work item by ID and assign it to
 Preconditions:
 - MCP Azure DevOps server is configured and authenticated.
 - Required environment variables: `AZDO_ORG_URL`, `AZDO_PROJECT`, `AZDO_USER_EMAIL`.
+- **Setup Script**: Run `scripts/prompts/set-azure-devops-env.ps1` to automatically configure all required environment variables.
 - Input parameter: `WORK_ITEM_ID` (numeric Azure DevOps work item ID).
 
 Instructions:
@@ -45,4 +46,6 @@ Expected Output:
 - `notes`: string
 
 Example Usage Notes:
+- Run the setup script first: `. .\scripts\prompts\set-azure-devops-env.ps1`
 - Set required env vars; trigger this prompt in your MCP-aware client, provide `WORK_ITEM_ID`, and set `CONFIRM_ASSIGN=true` to perform the change.
+- To enable actual assignment (not dry-run): `$env:CONFIRM_ASSIGN = "true"`

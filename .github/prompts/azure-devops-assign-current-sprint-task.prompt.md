@@ -1,55 +1,53 @@
-Title: Assign me a task from the current sprint
+Title: Show my tasks from the current sprint
 
-Goal: Find an unassigned, in-sprint work item that matches my criteria and reassign it to me.
+Goal: Fetch all work items assigned to me in the current sprint.
 
 Preconditions:
 - MCP Azure DevOps server is connected and authenticated.
 - Environment variables available: `AZDO_ORG_URL`, `AZDO_PROJECT`, `AZDO_TEAM`, `AZDO_USER_EMAIL`.
-- Optional variables: `AZDO_AREA_PATH`, `AZDO_WORK_ITEM_TYPES` (comma-separated; default: User Story,Bug,Task), `AZDO_PRIORITY_MIN` (default: 0), `AZDO_PRIORITY_MAX` (default: 4).
+- Optional variables: `AZDO_AREA_PATH`, `AZDO_WORK_ITEM_TYPES` (comma-separated; default: User Story,Bug,Task,Issue), `AZDO_PRIORITY_MIN` (default: 0), `AZDO_PRIORITY_MAX` (default: 4).
+- **Setup Script**: Run `scripts/prompts/set-azure-devops-env.ps1` to automatically configure all required environment variables.
 
 System/Tool Context:
 - Use Azure DevOps REST via MCP server tools.
 - Respect org/project/team permissions.
 
 Instructions:
+0) First, execute the PowerShell script to set environment variables: `. .\scripts\prompts\set-azure-devops-env.ps1`
 1) Identify the current active iteration for `AZDO_TEAM` in project `AZDO_PROJECT`.
-2) Query work items within that iteration that are:
-   - Type in `AZDO_WORK_ITEM_TYPES` (default: User Story, Bug, Task)
+2) Get all work items for that specific iteration using the iteration ID.
+3) Filter the work items to only include those that are:
+   - Assigned To equals `AZDO_USER_EMAIL`
+   - Type in `AZDO_WORK_ITEM_TYPES` (default: User Story, Bug, Task, Issue)
    - State not in Done/Closed/Removed
-   - Assigned To is empty or not set
+   - Iteration Path matches the current sprint iteration path (must be exact match, not parent iteration)
    - Optional: `Area Path` equals `AZDO_AREA_PATH` if provided
    - Optional: `Priority` between `AZDO_PRIORITY_MIN` and `AZDO_PRIORITY_MAX`
-3) Rank candidates by:
+4) Sort results by:
    - Highest `Priority`
    - Most recent `Updated Date`
-   - Smallest `Remaining Work` (prefer quick wins)
-4) Select the top candidate. If none found, explain clearly and stop.
-5) Assign `Assigned To` to `AZDO_USER_EMAIL` and add a comment:
-   - "Auto-assigned via MCP: picking up from current sprint"
-6) Return a concise summary including:
+   - Smallest `Remaining Work` (show quick wins first)
+5) If no items found, explain clearly that there are no work items assigned to you in the current sprint.
+6) Return a comprehensive list including for each work item:
    - Work item ID, title, type, state, priority
    - Iteration path, area path
+   - Remaining work (if available)
+   - Last updated date
    - URL to the item
-   - The change performed (assignment + comment)
-
-Validation & Safety:
-- Dry-run first: show selected candidate and ask for confirmation unless `CONFIRM_ASSIGN=true`.
-- If confirmation is required and not given, do not modify.
-- If assignment fails due to permissions or conflicts, report the error with the work item ID and reason.
 
 Parameters (defaults):
-- `CONFIRM_ASSIGN`: false
-- `AZDO_WORK_ITEM_TYPES`: "User Story,Bug,Task"
+- `AZDO_WORK_ITEM_TYPES`: "User Story,Bug,Task,Issue"
 - `AZDO_PRIORITY_MIN`: 0
 - `AZDO_PRIORITY_MAX`: 4
 
 Example Invocation Notes (for MCP client):
-- Ensure env vars are set; then run the prompt as a single action.
+- Run the setup script first: `. .\scripts\prompts\set-azure-devops-env.ps1`
+- Then execute the prompt as a single action.
 - If your MCP client supports variables, pass overrides where needed.
 
 Expected Output (JSON-like fields):
-- `selected`: { id, title, type, state, priority, url }
-- `action`: "assigned" | "dry-run"
-- `assignee`: `AZDO_USER_EMAIL`
-- `comment_added`: boolean
-- `notes`: string
+- `sprint`: { name, path, id }
+- `workItems`: [{ id, title, type, state, priority, remainingWork, lastUpdated, url }]
+- `totalCount`: number
+
+Note: Only show work items from the current sprint. Do not mention or reference work items from other iterations or explain what was excluded.
