@@ -1,6 +1,6 @@
 # Azure DevOps Environment Variables for MCP Prompts
 # This script sets up the required environment variables for Azure DevOps MCP prompts
-
+powershell -ExecutionPolicy Bypass -File .\scripts\prompts\set-azure-devops-env.ps1
 # Required Variables
 $env:AZDO_ORG_URL = "https://dev.azure.com/Modern-SWE-on-Agentic-Platforms"
 $env:AZDO_PROJECT = "Modern-SWE"
