@@ -197,7 +197,25 @@ az webapp list --query "[?name=='your-app-name'].name"
 
 #### 2. "Service Principal authentication failed"
 
-**Error**: `AADSTS7000215: Invalid client secret provided`
+**Error**: `Using auth-type: SERVICE_PRINCIPAL. Not all values are present. Ensure 'client-id' and 'tenant-id' are supplied.`
+
+**Solution**: Re-run the setup script to create proper credentials
+
+```powershell
+# Re-create Service Principal with correct format
+.\scripts\setup-azure-webapp-secrets.ps1
+```
+
+The script will:
+- Delete old Service Principal
+- Create new one with proper JSON format
+- Validate credentials before displaying
+
+**Important**: Copy the ENTIRE JSON including `{` and `}` to GitHub secrets.
+
+See [AZURE-LOGIN-FIX.md](AZURE-LOGIN-FIX.md) for detailed troubleshooting.
+
+**Alternate Error**: `AADSTS7000215: Invalid client secret provided`
 
 **Solution**: Regenerate Service Principal credentials
 

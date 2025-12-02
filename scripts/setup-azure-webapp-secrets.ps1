@@ -90,19 +90,50 @@ if ($confirm -eq 'n' -or $confirm -eq 'N') {
     exit 0
 }
 
+# Create Resource Group first (if it doesn't exist)
+Write-Host ""
+Write-Host "📦 Creating Resource Group (if needed)..." -ForegroundColor Cyan
+az group create --name $resourceGroup --location $location --output none 2>&1
+Write-Host "✅ Resource Group ready" -ForegroundColor Green
+
 # Create Service Principal for GitHub Actions
 Write-Host ""
 Write-Host "🔐 Creating Service Principal for GitHub Actions..." -ForegroundColor Cyan
 
 $spName = "sp-github-$webappName"
-$sp = az ad sp create-for-rbac --name $spName --role contributor --scopes /subscriptions/$subscription/resourceGroups/$resourceGroup --sdk-auth 2>&1
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "⚠️  Service principal already exists or creation failed. Attempting to use existing..." -ForegroundColor Yellow
-    $sp = az ad sp list --display-name $spName --query "[0]" 2>&1
+# Check if SP already exists and delete it to create fresh credentials
+$existingSp = az ad sp list --display-name $spName --query "[0].appId" -o tsv 2>$null
+if ($existingSp) {
+    Write-Host "⚠️  Deleting existing Service Principal to create fresh credentials..." -ForegroundColor Yellow
+    az ad sp delete --id $existingSp 2>$null
 }
 
-Write-Host "✅ Service Principal configured" -ForegroundColor Green
+# Create new Service Principal with proper JSON format
+Write-Host "Creating new Service Principal..." -ForegroundColor Cyan
+$spJson = az ad sp create-for-rbac `
+    --name $spName `
+    --role contributor `
+    --scopes /subscriptions/$subscription/resourceGroups/$resourceGroup `
+    --sdk-auth
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Failed to create Service Principal!" -ForegroundColor Red
+    Write-Host "Please check your Azure permissions and try again." -ForegroundColor Yellow
+    exit 1
+}
+
+# Parse the JSON to validate it
+try {
+    $spObject = $spJson | ConvertFrom-Json
+    Write-Host "✅ Service Principal created successfully" -ForegroundColor Green
+    Write-Host "   Client ID: $($spObject.clientId)" -ForegroundColor Gray
+    Write-Host "   Tenant ID: $($spObject.tenantId)" -ForegroundColor Gray
+} catch {
+    Write-Host "❌ Invalid Service Principal JSON!" -ForegroundColor Red
+    Write-Host "Output: $spJson" -ForegroundColor Yellow
+    exit 1
+}
 
 # Output GitHub Secrets
 Write-Host ""
@@ -118,7 +149,9 @@ Write-Host ""
 
 Write-Host "1️⃣  AZURE_CREDENTIALS" -ForegroundColor Cyan
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkGray
-Write-Host $sp -ForegroundColor White
+Write-Host "Copy the ENTIRE JSON object below (including { and }):" -ForegroundColor Yellow
+Write-Host ""
+Write-Host $spJson -ForegroundColor White
 Write-Host ""
 
 Write-Host "2️⃣  AZURE_RESOURCE_GROUP" -ForegroundColor Cyan
@@ -151,8 +184,8 @@ $outputFile = "azure-secrets-$webappName.txt"
 GitHub Secrets for $githubRepo
 Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 
-AZURE_CREDENTIALS:
-$sp
+AZURE_CREDENTIALS (Copy the ENTIRE JSON including { and }):
+$spJson
 
 AZURE_RESOURCE_GROUP:
 $resourceGroup

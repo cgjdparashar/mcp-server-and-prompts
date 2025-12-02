@@ -426,9 +426,10 @@ jobs:
         fi
     
     - name: Azure Login
-      uses: azure/login@v1
+      uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
+        enable-AzPSSession: false
     
     - name: Create or Update Azure Web App
       id: create-webapp
