@@ -25,11 +25,29 @@ jobs:
       with:
         fetch-depth: 0
       
-    - name: Setup Node.js
+    - name: Check for Node.js dependencies
+      id: check-nodejs
+      run: |
+        if [ -f "package.json" ]; then
+          echo "has_nodejs=true" >> $GITHUB_OUTPUT
+          echo "✅ Node.js project detected"
+        else
+          echo "has_nodejs=false" >> $GITHUB_OUTPUT
+          echo "ℹ️  No Node.js dependencies found (this is fine for documentation-only repos)"
+        fi
+      
+    - name: Setup Node.js (if needed)
+      if: steps.check-nodejs.outputs.has_nodejs == 'true'
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
+    
+    - name: Install Node.js dependencies (if needed)
+      if: steps.check-nodejs.outputs.has_nodejs == 'true'
+      run: |
+        echo "📦 Installing Node.js dependencies..."
+        npm ci
     
     - name: Validate Repository Structure
       run: |
