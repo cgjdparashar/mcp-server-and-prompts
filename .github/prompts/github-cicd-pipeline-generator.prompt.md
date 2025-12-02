@@ -181,11 +181,19 @@ Instructions:
    - Dependency vulnerability scanning (npm audit, pip-audit, OWASP Dependency-Check)
    - Code scanning (CodeQL for supported languages)
    
-   **Deployment Stage (if DEPLOYMENT_TARGET specified):**
-   - **Azure**: Azure Web App, Azure Container Apps, Azure Functions
-   - **AWS**: Elastic Beanstalk, ECS, Lambda, S3
+   **Deployment Stage (DEFAULT: Azure Web Apps - auto-create based on tech stack):**
+   - **Azure Web Apps** (PRIMARY): Automatically create/update Web App based on detected runtime
+     - Node.js → Azure Web App with Node.js runtime
+     - Python → Azure Web App with Python runtime
+     - Java → Azure Web App with Java runtime
+     - .NET → Azure Web App with .NET Core runtime
+     - PHP → Azure Web App with PHP runtime
+     - Ruby → Azure Web App with Ruby runtime
+     - Static sites → Azure Web App with Node.js + Express server
+   - **Azure Container Apps**: Containerized deployments
+   - **Azure Functions**: Serverless applications
+   - **AWS**: Elastic Beanstalk, ECS, Lambda, S3 (alternative)
    - **Docker**: Build and push to Docker Hub, GitHub Container Registry, or Azure Container Registry
-   - **Static Sites**: GitHub Pages, Netlify, Vercel
    - **None**: Skip deployment, only build and test
 
 7) Configure workflow triggers:
@@ -362,7 +370,7 @@ Parameters:
 - `GITHUB_REPO_OWNER` (required): GitHub repository owner/organization
 - `GITHUB_REPO_NAME` (required): Repository name
 - `GITHUB_BRANCH` (optional, default: "main"): Target branch for analysis and workflow
-- `DEPLOYMENT_TARGET` (optional, default: "none"): Where to deploy (azure|aws|docker|github-pages|none)
+- `DEPLOYMENT_TARGET` (optional, default: "azure"): Where to deploy (azure|aws|docker|none)
 - `ENABLE_CODE_SCANNING` (optional, default: "true"): Enable CodeQL security scanning
 - `ENABLE_DEPENDENCY_REVIEW` (optional, default: "true"): Enable dependency vulnerability scanning
 - `CREATE_PR` (optional, default: "true"): Create PR instead of direct commit
@@ -377,7 +385,7 @@ Environment Variables to Set (PowerShell):
 $env:GITHUB_REPO_OWNER = "your-github-username"
 $env:GITHUB_REPO_NAME = "your-repository-name"
 $env:GITHUB_BRANCH = "main"  # optional
-$env:DEPLOYMENT_TARGET = "azure"  # optional: azure|aws|docker|github-pages|none
+$env:DEPLOYMENT_TARGET = "azure"  # default: azure (auto-creates Web App) | aws|docker|none
 $env:ENABLE_CODE_SCANNING = "true"  # optional
 $env:CREATE_PR = "true"  # optional
 ```

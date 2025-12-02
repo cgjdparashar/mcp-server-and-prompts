@@ -350,18 +350,17 @@ jobs:
         echo "✅ File permissions check complete"
 
   deploy:
-    name: Deploy to GitHub Pages
+    name: Deploy to Azure Web App
     runs-on: ubuntu-latest
     needs: [validate-and-build, security-scan]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/devops-build-deploy-code'
     permissions:
       contents: read
-      pages: write
       id-token: write
     
     environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      name: production
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     
     steps:
     - name: Checkout code
@@ -373,27 +372,180 @@ jobs:
         name: deployment-package
         path: deployment-package/
     
-    - name: Setup GitHub Pages
-      uses: actions/configure-pages@v4
-    
-    - name: Prepare Documentation Site
+    - name: Detect Tech Stack
+      id: detect-stack
       run: |
-        echo "🌐 Preparing documentation site..."
+        echo "🔍 Detecting tech stack for Azure deployment..."
         
-        # Create site directory
-        mkdir -p _site
+        # Detect Node.js
+        if [ -f "package.json" ]; then
+          echo "runtime=node" >> $GITHUB_OUTPUT
+          NODE_VERSION=$(grep -oP '"node":\s*"\K[^"]+' package.json || echo "18")
+          echo "runtime_version=NODE|$NODE_VERSION-lts" >> $GITHUB_OUTPUT
+          echo "✅ Detected: Node.js application"
         
-        # Copy documentation
-        cp -r docs/* _site/ 2>/dev/null || mkdir -p _site
-        cp README.md _site/index.md 2>/dev/null || true
+        # Detect Python
+        elif [ -f "requirements.txt" ] || [ -f "Pipfile" ] || [ -f "pyproject.toml" ]; then
+          echo "runtime=python" >> $GITHUB_OUTPUT
+          PYTHON_VERSION="3.11"
+          if [ -f "runtime.txt" ]; then
+            PYTHON_VERSION=$(cat runtime.txt | grep -oP 'python-\K[0-9.]+' || echo "3.11")
+          fi
+          echo "runtime_version=PYTHON|$PYTHON_VERSION" >> $GITHUB_OUTPUT
+          echo "✅ Detected: Python application"
         
-        # Copy deployment package
-        mkdir -p _site/deployment
-        cp -r deployment-package/* _site/deployment/ 2>/dev/null || true
+        # Detect Java
+        elif [ -f "pom.xml" ] || [ -f "build.gradle" ]; then
+          echo "runtime=java" >> $GITHUB_OUTPUT
+          echo "runtime_version=JAVA|17-java17" >> $GITHUB_OUTPUT
+          echo "✅ Detected: Java application"
         
-        # Create index.html if not exists
-        if [ ! -f "_site/index.html" ]; then
-          cat > _site/index.html <<EOF
+        # Detect .NET
+        elif ls *.csproj 1>/dev/null 2>&1 || ls *.fsproj 1>/dev/null 2>&1; then
+          echo "runtime=dotnet" >> $GITHUB_OUTPUT
+          echo "runtime_version=DOTNETCORE|8.0" >> $GITHUB_OUTPUT
+          echo "✅ Detected: .NET application"
+        
+        # Detect PHP
+        elif [ -f "composer.json" ] || [ -f "index.php" ]; then
+          echo "runtime=php" >> $GITHUB_OUTPUT
+          echo "runtime_version=PHP|8.2" >> $GITHUB_OUTPUT
+          echo "✅ Detected: PHP application"
+        
+        # Detect Ruby
+        elif [ -f "Gemfile" ] || [ -f "config.ru" ]; then
+          echo "runtime=ruby" >> $GITHUB_OUTPUT
+          echo "runtime_version=RUBY|3.2" >> $GITHUB_OUTPUT
+          echo "✅ Detected: Ruby application"
+        
+        # Static site (documentation only)
+        else
+          echo "runtime=static" >> $GITHUB_OUTPUT
+          echo "runtime_version=NODE|18-lts" >> $GITHUB_OUTPUT
+          echo "ℹ️  Detected: Static site (will use Node.js for hosting)"
+        fi
+    
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Create or Update Azure Web App
+      id: create-webapp
+      run: |
+        echo "🔧 Creating/updating Azure Web App..."
+        
+        # Set variables
+        RESOURCE_GROUP="${{ secrets.AZURE_RESOURCE_GROUP }}"
+        WEBAPP_NAME="${{ secrets.AZURE_WEBAPP_NAME }}"
+        LOCATION="${{ secrets.AZURE_LOCATION || 'eastus' }}"
+        RUNTIME="${{ steps.detect-stack.outputs.runtime_version }}"
+        SKU="${{ secrets.AZURE_SKU || 'F1' }}"
+        
+        echo "Configuration:"
+        echo "  Resource Group: $RESOURCE_GROUP"
+        echo "  Web App Name: $WEBAPP_NAME"
+        echo "  Location: $LOCATION"
+        echo "  Runtime: $RUNTIME"
+        echo "  SKU: $SKU"
+        
+        # Create resource group if it doesn't exist
+        az group create --name $RESOURCE_GROUP --location $LOCATION || true
+        
+        # Check if App Service Plan exists
+        PLAN_EXISTS=$(az appservice plan list --resource-group $RESOURCE_GROUP --query "[?name=='${WEBAPP_NAME}-plan'].name" -o tsv)
+        
+        if [ -z "$PLAN_EXISTS" ]; then
+          echo "Creating new App Service Plan..."
+          az appservice plan create \
+            --name ${WEBAPP_NAME}-plan \
+            --resource-group $RESOURCE_GROUP \
+            --location $LOCATION \
+            --sku $SKU \
+            --is-linux
+        else
+          echo "✅ App Service Plan already exists"
+        fi
+        
+        # Check if Web App exists
+        WEBAPP_EXISTS=$(az webapp list --resource-group $RESOURCE_GROUP --query "[?name=='$WEBAPP_NAME'].name" -o tsv)
+        
+        if [ -z "$WEBAPP_EXISTS" ]; then
+          echo "Creating new Web App..."
+          az webapp create \
+            --name $WEBAPP_NAME \
+            --resource-group $RESOURCE_GROUP \
+            --plan ${WEBAPP_NAME}-plan \
+            --runtime "$RUNTIME"
+        else
+          echo "✅ Web App already exists, updating configuration..."
+          az webapp config set \
+            --name $WEBAPP_NAME \
+            --resource-group $RESOURCE_GROUP \
+            --linux-fx-version "$RUNTIME"
+        fi
+        
+        # Configure Web App settings
+        az webapp config appsettings set \
+          --name $WEBAPP_NAME \
+          --resource-group $RESOURCE_GROUP \
+          --settings \
+            SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+            WEBSITE_RUN_FROM_PACKAGE=1 \
+            DEPLOYMENT_BRANCH="${GITHUB_REF#refs/heads/}" \
+            DEPLOYMENT_COMMIT="${GITHUB_SHA:0:7}" \
+            BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+        
+        echo "✅ Azure Web App configured successfully"
+        echo "webapp_url=https://${WEBAPP_NAME}.azurewebsites.net" >> $GITHUB_OUTPUT
+    
+    - name: Prepare Deployment Package
+      run: |
+        echo "📦 Preparing deployment package..."
+        
+        # Create deployment directory
+        mkdir -p deploy
+        
+        if [ "${{ steps.detect-stack.outputs.runtime }}" == "static" ]; then
+          # For static sites, create a simple Node.js server
+          cp -r deployment-package/* deploy/
+          
+          cat > deploy/server.js <<'EOF'
+        const express = require('express');
+        const path = require('path');
+        const app = express();
+        const port = process.env.PORT || 8080;
+
+        app.use(express.static(__dirname));
+        app.get('*', (req, res) => {
+          res.sendFile(path.join(__dirname, 'index.html'));
+        });
+
+        app.listen(port, () => {
+          console.log(`Server running on port ${port}`);
+        });
+        EOF
+          
+          cat > deploy/package.json <<EOF
+        {
+          "name": "mcp-server-prompts-docs",
+          "version": "1.0.0",
+          "description": "MCP Server & Prompts Documentation",
+          "main": "server.js",
+          "scripts": {
+            "start": "node server.js"
+          },
+          "dependencies": {
+            "express": "^4.18.2"
+          },
+          "engines": {
+            "node": ">=18.0.0"
+          }
+        }
+        EOF
+          
+          # Create index.html
+          cat > deploy/index.html <<'EOF'
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -402,127 +554,140 @@ jobs:
             <title>MCP Server & Prompts Documentation</title>
             <style>
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                     max-width: 1200px;
                     margin: 0 auto;
-                    padding: 20px;
+                    padding: 40px 20px;
                     line-height: 1.6;
-                    color: #333;
+                    color: #24292e;
+                    background: #f6f8fa;
                 }
-                h1 { color: #0366d6; }
+                .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+                h1 { color: #0366d6; margin-bottom: 10px; }
+                .subtitle { color: #586069; margin-bottom: 30px; }
                 .card {
                     border: 1px solid #e1e4e8;
                     border-radius: 6px;
-                    padding: 20px;
+                    padding: 24px;
                     margin: 20px 0;
                     background: #f6f8fa;
                 }
                 .button {
                     display: inline-block;
-                    padding: 10px 20px;
+                    padding: 12px 24px;
                     background: #0366d6;
                     color: white;
                     text-decoration: none;
                     border-radius: 6px;
-                    margin: 5px;
+                    margin: 8px 5px 8px 0;
+                    font-weight: 600;
+                    transition: background 0.2s;
                 }
                 .button:hover { background: #0256c7; }
                 .status { 
                     display: inline-block;
-                    padding: 3px 8px;
-                    border-radius: 3px;
-                    font-size: 12px;
-                    font-weight: bold;
+                    padding: 5px 12px;
+                    border-radius: 12px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    background: #28a745;
+                    color: white;
                 }
-                .status.success { background: #28a745; color: white; }
+                ul { list-style: none; padding: 0; }
+                li { padding: 8px 0; border-bottom: 1px solid #e1e4e8; }
+                li:last-child { border-bottom: none; }
+                code { 
+                    background: #f6f8fa; 
+                    padding: 3px 6px; 
+                    border-radius: 3px; 
+                    font-family: 'Courier New', monospace;
+                    font-size: 14px;
+                }
                 .footer {
-                    margin-top: 40px;
-                    padding-top: 20px;
-                    border-top: 1px solid #e1e4e8;
+                    margin-top: 60px;
+                    padding-top: 30px;
+                    border-top: 2px solid #e1e4e8;
                     text-align: center;
                     color: #586069;
                 }
             </style>
         </head>
         <body>
-            <h1>🚀 MCP Server & Prompts</h1>
-            <p class="status success">✅ Build Status: Success</p>
-            
-            <div class="card">
-                <h2>📋 Available Prompts</h2>
-                <ul>
-                    <li><strong>Azure DevOps: Assign Current Sprint Task</strong> - Assign work items from current sprint</li>
-                    <li><strong>GitHub CI/CD Pipeline Generator</strong> - Auto-detect tech stack and generate CI/CD pipelines</li>
-                    <li><strong>Azure DevOps Work Item Management</strong> - Manage and update work items</li>
-                    <li><strong>Playwright Test Automation</strong> - Run and diagnose Playwright tests</li>
-                    <li><strong>MySQL Query Execution</strong> - Execute database queries</li>
-                </ul>
-            </div>
-            
-            <div class="card">
-                <h2>📚 Documentation</h2>
-                <a href="QUICK_REFERENCE.html" class="button">Quick Reference</a>
-                <a href="github-cicd-pipeline-generator.html" class="button">CI/CD Generator Guide</a>
-                <a href="CREATION_SUMMARY.html" class="button">Creation Summary</a>
-            </div>
-            
-            <div class="card">
-                <h2>🔧 Setup Scripts</h2>
-                <ul>
-                    <li><code>set-azure-devops-env.ps1</code> - Configure Azure DevOps environment</li>
-                    <li><code>set-github-cicd-env.ps1</code> - Configure GitHub CI/CD environment</li>
-                </ul>
-            </div>
-            
-            <div class="card">
-                <h2>📦 Deployment Information</h2>
-                <p><strong>Version:</strong> 1.0.${GITHUB_RUN_NUMBER}</p>
-                <p><strong>Build Date:</strong> $(date -u +"%Y-%m-%d %H:%M:%S UTC")</p>
-                <p><strong>Branch:</strong> ${GITHUB_REF#refs/heads/}</p>
-                <p><strong>Commit:</strong> <code>${GITHUB_SHA:0:7}</code></p>
-            </div>
-            
-            <div class="card">
-                <h2>🔗 Links</h2>
-                <a href="https://github.com/${GITHUB_REPOSITORY}" class="button">GitHub Repository</a>
-                <a href="https://github.com/${GITHUB_REPOSITORY}/actions" class="button">Actions</a>
-                <a href="deployment/DEPLOYMENT_INFO.json" class="button">Deployment Metadata</a>
-            </div>
-            
-            <div class="footer">
-                <p>Built with ❤️ using GitHub Actions</p>
-                <p>© 2025 MCP Server & Prompts | <a href="https://github.com/${GITHUB_REPOSITORY}">View on GitHub</a></p>
+            <div class="container">
+                <h1>🚀 MCP Server & Prompts</h1>
+                <p class="subtitle">Model Context Protocol Prompts for DevOps Workflows</p>
+                <p class="status">✅ Deployed on Azure</p>
+                
+                <div class="card">
+                    <h2>📋 Available Prompts</h2>
+                    <ul>
+                        <li><strong>Azure DevOps: Assign Current Sprint Task</strong> - Automatically assign work items from current sprint</li>
+                        <li><strong>GitHub CI/CD Pipeline Generator</strong> - Auto-detect tech stack and generate complete CI/CD pipelines</li>
+                        <li><strong>Azure DevOps Work Item Management</strong> - Comprehensive work item operations</li>
+                        <li><strong>Playwright Test Automation</strong> - Run and diagnose Playwright tests</li>
+                        <li><strong>MySQL Query Execution</strong> - Execute and manage database queries</li>
+                    </ul>
+                </div>
+                
+                <div class="card">
+                    <h2>📚 Documentation</h2>
+                    <p>Comprehensive guides and references for all prompts and workflows.</p>
+                    <a href="/docs/QUICK_REFERENCE.md" class="button">Quick Reference</a>
+                    <a href="/docs/github-cicd-pipeline-generator.md" class="button">CI/CD Guide</a>
+                    <a href="/docs/CREATION_SUMMARY.md" class="button">Implementation</a>
+                </div>
+                
+                <div class="card">
+                    <h2>🔧 Setup Scripts</h2>
+                    <p>PowerShell scripts to configure your environment:</p>
+                    <ul>
+                        <li><code>set-azure-devops-env.ps1</code> - Configure Azure DevOps environment variables</li>
+                        <li><code>set-github-cicd-env.ps1</code> - Configure GitHub CI/CD environment variables</li>
+                    </ul>
+                </div>
+                
+                <div class="card">
+                    <h2>🔗 Quick Links</h2>
+                    <a href="https://github.com/cgjdparashar/mcp-server-and-prompts" class="button">GitHub Repository</a>
+                    <a href="https://github.com/cgjdparashar/mcp-server-and-prompts/actions" class="button">Build Status</a>
+                    <a href="/DEPLOYMENT_INFO.json" class="button">Deployment Info</a>
+                </div>
+                
+                <div class="footer">
+                    <p><strong>Deployed on Azure Web Apps</strong></p>
+                    <p>Built with ❤️ using GitHub Actions | © 2025</p>
+                </div>
             </div>
         </body>
         </html>
         EOF
+        else
+          # For applications with runtime, copy the built artifacts
+          cp -r deployment-package/* deploy/
         fi
         
-        echo "✅ Documentation site prepared"
-        echo ""
-        echo "Site contents:"
-        ls -la _site/
+        echo "✅ Deployment package prepared"
+        ls -la deploy/
     
-    - name: Upload Pages Artifact
-      uses: actions/upload-pages-artifact@v3
+    - name: Deploy to Azure Web App
+      id: deploy-to-webapp
+      uses: azure/webapps-deploy@v2
       with:
-        path: _site/
-    
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
+        app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+        package: deploy
     
     - name: Deployment Summary
       run: |
         echo "🎉 Deployment completed successfully!"
         echo ""
         echo "📊 Deployment Details:"
-        echo "  - URL: ${{ steps.deployment.outputs.page_url }}"
+        echo "  - URL: https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+        echo "  - Runtime: ${{ steps.detect-stack.outputs.runtime_version }}"
         echo "  - Version: 1.0.${GITHUB_RUN_NUMBER}"
         echo "  - Branch: ${GITHUB_REF#refs/heads/}"
         echo "  - Commit: ${GITHUB_SHA:0:7}"
         echo ""
-        echo "✅ Your documentation is now live!"
+        echo "✅ Your application is now live on Azure!"
 
   notify:
     name: Notification

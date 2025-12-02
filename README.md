@@ -2,7 +2,7 @@
 
 [![CI/CD Pipeline](https://github.com/cgjdparashar/mcp-server-and-prompts/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/cgjdparashar/mcp-server-and-prompts/actions/workflows/ci-cd-pipeline.yml)
 
-**Automated Build & Deployment**: This repository includes a complete CI/CD pipeline that validates prompts, runs security checks, and deploys documentation automatically.
+**Automated Build & Deployment to Azure**: This repository includes a complete CI/CD pipeline that validates prompts, runs security checks, and automatically deploys to Azure Web Apps based on detected tech stack.
 
 ## Available Prompts
 
@@ -21,8 +21,11 @@
   - Detects tech stack (Node.js, Python, Java, .NET, Go, Ruby, PHP, Rust)
   - Identifies frameworks (React, Angular, Vue, Next.js, Django, Spring Boot, etc.)
   - Generates complete GitHub Actions workflow with build, test, security scanning
-  - Supports deployment to Azure, AWS, Docker, GitHub Pages
+  - **Automatically creates Azure Web Apps** based on detected runtime
+  - Supports deployment to Azure (default), AWS, Docker
   - Creates documentation and configuration templates
+- **Azure Setup**: [`scripts/setup-azure-webapp-secrets.ps1`](scripts/setup-azure-webapp-secrets.ps1)
+- **Azure Guide**: [`docs/AZURE-WEBAPP-DEPLOYMENT.md`](docs/AZURE-WEBAPP-DEPLOYMENT.md)
 
 ---
 
