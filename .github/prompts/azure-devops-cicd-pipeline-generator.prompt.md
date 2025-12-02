@@ -275,25 +275,54 @@ Instructions:
    - Static code analysis using SonarQube or similar
    - Security scanning for container images
    
-   **Deployment Stage (DEFAULT: Azure Web Apps - auto-create based on tech stack):**
-   - **Azure App Service (Web Apps)** (PRIMARY):
+   **Deployment Stage (DEFAULT: Auto-detect and deploy based on tech stack):**
+   
+   - **Azure Static Web Apps** (PRIMARY for static/JAMstack sites):
+     - Automatically detects static sites and frontend frameworks
+     - Detection criteria:
+       * React, Vue, Angular, Svelte, Next.js (with static export)
+       * Static HTML/CSS/JS sites
+       * JAMstack applications (Gatsby, Hugo, Jekyll, Eleventy)
+       * Build output to: `dist/`, `build/`, `out/`, `public/`, `.next/`, `_site/`
+     - Automatically creates Azure Static Web App using Azure CLI
+     - Features:
+       * Global CDN distribution
+       * Free SSL certificates
+       * Custom domains support
+       * Staging environments for PRs
+       * Integrated authentication (Azure AD, GitHub, Twitter, etc.)
+       * Serverless API support (Azure Functions backend)
+       * Free tier available (100 GB bandwidth/month)
+     - Uses AzureStaticWebApp@0 task or Azure CLI
+     - Configuration:
+       * `app_location`: Source code location (default: "/")
+       * `api_location`: API/Functions location (optional, default: "api")
+       * `output_location`: Build output folder (auto-detected: "dist", "build", "out")
+       * `skip_app_build`: false (pipeline handles build)
+     - Deployment process:
+       1. Build application with detected package manager
+       2. Create Static Web App resource (if doesn't exist)
+       3. Get deployment token from Azure
+       4. Deploy built artifacts to Static Web App
+       5. Configure custom domain (if specified)
+       6. Set up staging environment for PRs
+   
+   - **Azure App Service (Web Apps)** (for server-side applications):
      - Uses Azure service connection for authentication
      - Automatically creates Resource Group, App Service Plan, and Web App using Azure CLI
      - Deploys based on detected runtime:
-       * Node.js → Azure Web App with Node.js runtime (NODE|18-lts)
-       * Python → Azure Web App with Python runtime (PYTHON|3.11)
-       * Java → Azure Web App with Java runtime (JAVA|17-java17)
-       * .NET → Azure Web App with .NET Core runtime (DOTNETCORE|8.0)
-       * PHP → Azure Web App with PHP runtime (PHP|8.2)
-       * Ruby → Azure Web App with Ruby runtime (RUBY|3.2)
-       * Static sites → Azure Static Web Apps or App Service with Node.js + Express
+       * Node.js (with Express/server) → Azure Web App with Node.js runtime (NODE|18-lts)
+       * Python (Django/Flask/FastAPI) → Azure Web App with Python runtime (PYTHON|3.11)
+       * Java (Spring Boot) → Azure Web App with Java runtime (JAVA|17-java17)
+       * .NET (ASP.NET Core) → Azure Web App with .NET Core runtime (DOTNETCORE|8.0)
+       * PHP (Laravel/Symfony) → Azure Web App with PHP runtime (PHP|8.2)
+       * Ruby (Rails/Sinatra) → Azure Web App with Ruby runtime (RUBY|3.2)
      - Uses AzureWebApp@1 or AzureRmWebAppDeployment@4 task
      - Requires: Azure service connection, resource group name, web app name
    
-   - **Azure Container Instances**: For containerized applications
+   - **Azure Container Instances**: For containerized applications (Dockerfile present)
    - **Azure Kubernetes Service (AKS)**: For container orchestration
-   - **Azure Functions**: For serverless applications
-   - **Azure Static Web Apps**: For static sites and JAMstack apps
+   - **Azure Functions**: For serverless applications (function.json detected)
    - **None**: Skip deployment, only build and test
 
 7) Configure pipeline triggers:
@@ -334,14 +363,51 @@ Instructions:
       * Location
       * SKU/pricing tier
 
-12) Set up Azure resources (if deployment enabled):
+12) Set up Azure resources (deployment-type specific):
+    
+    **For Azure Static Web Apps:**
+    - Create Resource Group in Azure (if doesn't exist)
+    - Create Azure Static Web App using Azure CLI:
+      ```bash
+      az staticwebapp create \
+        --name <static-app-name> \
+        --resource-group <resource-group> \
+        --location <location> \
+        --sku Free \
+        --source <repo-url> \
+        --branch main \
+        --app-location "/" \
+        --api-location "api" \
+        --output-location "dist"
+      ```
+    - Get deployment token: `az staticwebapp secrets list`
+    - Configure custom domain (optional)
+    - Set up staging environments for pull requests
+    - Configure authentication providers (optional)
+    - Set up API backend (Azure Functions) if needed
+    
+    **For Azure App Service (Web Apps):**
     - Create Resource Group in Azure
     - Create App Service Plan with appropriate SKU
     - Create Web App with detected runtime stack
     - Configure application settings and connection strings
     - Set up deployment slots (staging, production)
+    - Enable Application Insights for monitoring
 
 13) Create variable groups in Azure DevOps:
+    
+    **For Azure Static Web Apps:**
+    - **Azure-StaticWebApp** variables:
+      * `azureSubscription` - Service connection name
+      * `resourceGroupName` - Azure resource group
+      * `staticWebAppName` - Static Web App name (globally unique)
+      * `location` - Azure region (e.g., eastus2, westus2, centralus)
+      * `appLocation` - Source code location (default: "/")
+      * `apiLocation` - API location (default: "api", or empty if no API)
+      * `outputLocation` - Build output folder (auto-detected: "dist", "build", "out")
+      * `staticWebAppToken` - Deployment token (secret)
+    
+    **For Azure App Service:**
     - **Azure-Connection** variables:
       * `azureSubscription` - Service connection name
       * `resourceGroupName` - Azure resource group
@@ -399,7 +465,18 @@ Instructions:
       * Variable groups to create
       * Azure resources to provision
       * Repository settings to enable
-    - **Azure Setup Steps**:
+    - **Azure Setup Steps** (varies by deployment type):
+      
+      **For Azure Static Web Apps:**
+      * Run setup script: `.\scripts\setup-azure-static-webapp.ps1`
+      * Create service connection in Azure DevOps (Project Settings → Service connections)
+      * Create variable group "Azure-StaticWebApp" with required values
+      * Pipeline will auto-create Static Web App on first run
+      * Get deployment token: `az staticwebapp secrets list --name <name> --resource-group <rg>`
+      * Add token to variable group as secret variable
+      * Reference: `docs/AZURE-STATIC-WEBAPP-DEPLOYMENT.md` for detailed instructions
+      
+      **For Azure App Service:**
       * Run setup script: `.\scripts\setup-azure-service-connection.ps1`
       * Create service connection in Azure DevOps
       * Configure variable groups with required values
@@ -413,10 +490,19 @@ Parameters:
 - `AZDO_PROJECT` (required): Azure DevOps project name
 - `AZDO_REPO_NAME` (required): Repository name
 - `AZDO_BRANCH` (optional, default: "main"): Target branch for analysis and pipeline
-- `DEPLOYMENT_TARGET` (optional, default: "azure-webapp"): Where to deploy (azure-webapp|azure-functions|azure-container|aks|azure-static|none)
+- `DEPLOYMENT_TARGET` (optional, default: "auto"): Where to deploy (auto|azure-static|azure-webapp|azure-functions|azure-container|aks|none)
+  * "auto" - Automatically detect (Static Web Apps for frontend, App Service for backend)
+  * "azure-static" - Force Azure Static Web Apps deployment
+  * "azure-webapp" - Force Azure App Service deployment
 - `AZURE_SUBSCRIPTION_ID` (required for deployment): Azure subscription ID
-- `AZURE_LOCATION` (optional, default: "eastus"): Azure region for resources
-- `AZURE_SKU` (optional, default: "B1"): App Service SKU (F1|B1|B2|B3|S1|S2|S3|P1V2|P2V2|P3V2)
+- `AZURE_LOCATION` (optional, default: "eastus2"): Azure region for resources (Static Web Apps: eastus2, westus2, centralus, westeurope, eastasia)
+- `AZURE_SKU` (optional, default: "Free" for Static Web Apps, "B1" for App Service): SKU/pricing tier
+  * Static Web Apps: Free (100 GB bandwidth), Standard (higher limits)
+  * App Service: F1 (free), B1/B2/B3 (basic), S1/S2/S3 (standard), P1V2/P2V2/P3V2 (premium)
+- `STATIC_APP_NAME` (optional): Custom name for Static Web App (must be globally unique)
+- `APP_LOCATION` (optional, default: "/"): Source code location for Static Web Apps
+- `API_LOCATION` (optional, default: "api"): API/Functions location for Static Web Apps
+- `OUTPUT_LOCATION` (optional, auto-detected): Build output folder (dist, build, out, public)
 - `ENABLE_CODE_SCANNING` (optional, default: "true"): Enable SonarQube/security scanning
 - `ENABLE_TEST_COVERAGE` (optional, default: "true"): Enable code coverage reporting
 - `CREATE_PR` (optional, default: "true"): Create PR instead of direct commit
@@ -435,9 +521,19 @@ $env:AZDO_REPO_NAME = "your-repository"
 
 # For deployment
 $env:AZURE_SUBSCRIPTION_ID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+$env:DEPLOYMENT_TARGET = "auto"  # auto-detect deployment type (default)
+# or specify: "azure-static" for Static Web Apps, "azure-webapp" for App Service
+
+# For Azure Static Web Apps (frontend/static sites)
+$env:AZURE_LOCATION = "eastus2"  # or: westus2, centralus, westeurope, eastasia
+$env:STATIC_APP_NAME = "my-static-app"  # globally unique
+$env:APP_LOCATION = "/"  # source code location
+$env:API_LOCATION = "api"  # API location (optional)
+$env:OUTPUT_LOCATION = "dist"  # build output (auto-detected if not set)
+
+# For Azure App Service (backend/server apps)
 $env:AZURE_LOCATION = "eastus"  # optional
-$env:AZURE_SKU = "B1"  # optional
-$env:DEPLOYMENT_TARGET = "azure-webapp"  # default
+$env:AZURE_SKU = "B1"  # F1 (free), B1, P1V2, etc.
 
 # Optional
 $env:AZDO_BRANCH = "main"  # optional
@@ -474,9 +570,13 @@ Expected Output:
       "vulnerabilities": 0
     },
     "deployment": {
-      "type": "Azure App Service",
-      "runtime": "NODE|18-lts",
-      "artifacts": "out/",
+      "type": "Azure Static Web Apps",
+      "detectionReason": "Static site with build output to dist/",
+      "isStatic": true,
+      "artifacts": "dist/",
+      "appLocation": "/",
+      "apiLocation": "api",
+      "outputLocation": "dist",
       "containerized": false
     }
   },
@@ -490,16 +590,26 @@ Expected Output:
   "generatedFiles": [
     "azure-pipelines.yml",
     "docs/AZURE-DEVOPS-PIPELINE.md",
+    "docs/AZURE-STATIC-WEBAPP-DEPLOYMENT.md",
     "scripts/setup-azure-service-connection.ps1",
+    "scripts/setup-azure-static-webapp.ps1",
     ".env.example",
     "DEPLOYMENT.md"
   ],
   "azureResources": {
+    "type": "Static Web App",
     "resourceGroup": "myapp-rg",
-    "appServicePlan": "myapp-plan",
-    "webApp": "myapp-webapp",
-    "location": "eastus",
-    "sku": "B1"
+    "staticWebApp": "my-static-app-12345",
+    "location": "eastus2",
+    "sku": "Free",
+    "features": [
+      "Global CDN",
+      "Free SSL",
+      "Custom domains",
+      "Staging environments",
+      "API support (Azure Functions)"
+    ],
+    "url": "https://my-static-app-12345.azurestaticapps.net"
   },
   "requiredSetup": {
     "serviceConnection": {
@@ -510,13 +620,16 @@ Expected Output:
     },
     "variableGroups": [
       {
-        "name": "Azure-Connection",
+        "name": "Azure-StaticWebApp",
         "variables": [
           "azureSubscription",
           "resourceGroupName",
-          "webAppName",
+          "staticWebAppName",
           "location",
-          "sku"
+          "appLocation",
+          "apiLocation",
+          "outputLocation",
+          "staticWebAppToken (secret)"
         ]
       },
       {
@@ -602,18 +715,153 @@ Best Practices Applied:
 - Provide troubleshooting guidance
 - For Azure deployments:
   * Automatically create Azure resources if they don't exist (idempotent)
-  * Detect tech stack and configure appropriate Azure runtime
-  * Use appropriate App Service Plan SKU for environment (F1 for dev, B1+ for prod)
+  * Detect tech stack and configure appropriate Azure service (Static Web Apps vs App Service)
+  * Use appropriate SKU for environment (Free for Static Web Apps dev, Standard for prod; F1 for App Service dev, B1+ for prod)
   * Enable Application Insights for monitoring
-  * Configure auto-scaling rules for production
-  * Use deployment slots (staging) for production deployments
+  * Configure auto-scaling rules for production (App Service)
+  * Use deployment slots (staging) for production deployments (App Service)
+  * Leverage PR staging environments (Static Web Apps)
   * Include comprehensive logging for debugging
   * Validate all variables and connections before deployment
   * Provide clear error messages for missing configuration
+- For Azure Static Web Apps specifically:
+  * Use Free tier for development/testing (100 GB bandwidth/month)
+  * Leverage automatic PR preview deployments
+  * Configure custom domains with free SSL certificates
+  * Use Azure Functions for API backend (serverless)
+  * Enable built-in authentication if needed
+  * Optimize build output size for faster CDN distribution
+  * Use geographic regions close to users (global CDN handles distribution)
   * Use multi-stage pipelines for separation of concerns
   * Implement proper artifact management between stages
 
-Example Pipeline Structure:
+Example Pipeline Structures:
+
+**Example 1: Azure Static Web Apps (React/Vue/Angular)**
+```yaml
+trigger:
+  branches:
+    include:
+    - main
+
+pr:
+  branches:
+    include:
+    - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: Azure-StaticWebApp
+  - name: nodeVersion
+    value: '18.x'
+
+stages:
+- stage: Build
+  displayName: 'Build Static Web App'
+  jobs:
+  - job: BuildJob
+    displayName: 'Build and Deploy'
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '$(nodeVersion)'
+      displayName: 'Install Node.js'
+    
+    - task: Cache@2
+      inputs:
+        key: 'npm | "$(Agent.OS)" | package-lock.json'
+        path: $(npm_config_cache)
+      displayName: 'Cache npm packages'
+    
+    - script: npm ci
+      displayName: 'Install dependencies'
+    
+    - script: npm run build
+      displayName: 'Build application'
+    
+    - script: npm test
+      displayName: 'Run tests'
+    
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/test-results.xml'
+      displayName: 'Publish test results'
+
+- stage: Deploy
+  displayName: 'Deploy to Azure Static Web Apps'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - job: CreateStaticWebApp
+    displayName: 'Create/Update Static Web App'
+    steps:
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: '$(azureSubscription)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Check if Static Web App exists
+          EXISTS=$(az staticwebapp show \
+            --name $(staticWebAppName) \
+            --resource-group $(resourceGroupName) \
+            --query "name" -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$EXISTS" ]; then
+            echo "Creating new Azure Static Web App..."
+            az staticwebapp create \
+              --name $(staticWebAppName) \
+              --resource-group $(resourceGroupName) \
+              --location $(location) \
+              --sku Free \
+              --branch main \
+              --app-location $(appLocation) \
+              --api-location $(apiLocation) \
+              --output-location $(outputLocation)
+          else
+            echo "Static Web App already exists"
+          fi
+          
+          # Get deployment token
+          TOKEN=$(az staticwebapp secrets list \
+            --name $(staticWebAppName) \
+            --resource-group $(resourceGroupName) \
+            --query "properties.apiKey" -o tsv)
+          
+          echo "##vso[task.setvariable variable=deploymentToken;issecret=true]$TOKEN"
+      displayName: 'Create/Update Static Web App'
+  
+  - job: DeployApp
+    displayName: 'Deploy Application'
+    dependsOn: CreateStaticWebApp
+    steps:
+    - checkout: self
+      submodules: true
+    
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '$(nodeVersion)'
+      displayName: 'Install Node.js'
+    
+    - script: npm ci
+      displayName: 'Install dependencies'
+    
+    - script: npm run build
+      displayName: 'Build application'
+    
+    - task: AzureStaticWebApp@0
+      inputs:
+        app_location: '$(appLocation)'
+        api_location: '$(apiLocation)'
+        output_location: '$(outputLocation)'
+        azure_static_web_apps_api_token: '$(deploymentToken)'
+        skip_app_build: true
+      displayName: 'Deploy to Static Web App'
+
+**Example 2: Azure App Service (Node.js/Express)**
 ```yaml
 trigger:
   branches:
