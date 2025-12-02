@@ -183,13 +183,16 @@ Instructions:
    
    **Deployment Stage (DEFAULT: Azure Web Apps - auto-create based on tech stack):**
    - **Azure Web Apps** (PRIMARY): Automatically create/update Web App based on detected runtime
-     - Node.js → Azure Web App with Node.js runtime
-     - Python → Azure Web App with Python runtime
-     - Java → Azure Web App with Java runtime
-     - .NET → Azure Web App with .NET Core runtime
-     - PHP → Azure Web App with PHP runtime
-     - Ruby → Azure Web App with Ruby runtime
+     - Uses Service Principal authentication via `azure/login@v2`
+     - Automatically creates Resource Group, App Service Plan, and Web App
+     - Node.js → Azure Web App with Node.js runtime (NODE|18-lts)
+     - Python → Azure Web App with Python runtime (PYTHON|3.11)
+     - Java → Azure Web App with Java runtime (JAVA|17-java17)
+     - .NET → Azure Web App with .NET Core runtime (DOTNETCORE|8.0)
+     - PHP → Azure Web App with PHP runtime (PHP|8.2)
+     - Ruby → Azure Web App with Ruby runtime (RUBY|3.2)
      - Static sites → Azure Web App with Node.js + Express server
+     - Requires: AZURE_CREDENTIALS (Service Principal JSON), AZURE_RESOURCE_GROUP, AZURE_WEBAPP_NAME, AZURE_LOCATION, AZURE_SKU
    - **Azure Container Apps**: Containerized deployments
    - **Azure Functions**: Serverless applications
    - **AWS**: Elastic Beanstalk, ECS, Lambda, S3 (alternative)
@@ -213,13 +216,34 @@ Instructions:
    - Include comprehensive comments explaining each step
    - Use matrix strategies for multi-version testing if appropriate
    - Add status badges configuration
+   - For Azure deployment, use `azure/login@v2` with Service Principal authentication
+   - Include automatic Azure resource creation (Resource Group, App Service Plan, Web App)
 
 10) Generate supporting files:
     - `.github/workflows/README.md` - Documentation for the CI/CD pipeline
     - `.env.example` - Template for required environment variables
     - `DEPLOYMENT.md` - Deployment instructions and prerequisites
+    - `docs/AZURE-WEBAPP-DEPLOYMENT.md` - Azure-specific setup guide (if Azure deployment)
 
-11) Create a pull request or commit directly (based on permissions):
+11) For Azure Web Apps deployment, provide setup instructions:
+    - Run `scripts/setup-azure-webapp-secrets.ps1` to generate Service Principal credentials
+    - The script will:
+      * Create Azure Service Principal with required permissions
+      * Generate AZURE_CREDENTIALS JSON with all 4 required fields:
+        - clientId (Application/Client ID)
+        - clientSecret (Client Secret/Password)
+        - subscriptionId (Azure Subscription ID)
+        - tenantId (Azure AD Tenant ID)
+      * Test credentials to ensure they work
+      * Display formatted JSON for GitHub Secrets
+    - Add all 5 required secrets to GitHub repository:
+      * AZURE_CREDENTIALS (Service Principal JSON - MUST include all 4 fields with braces)
+      * AZURE_RESOURCE_GROUP (e.g., "myapp-rg")
+      * AZURE_WEBAPP_NAME (unique name, e.g., "myapp-webapp-12345")
+      * AZURE_LOCATION (e.g., "eastus", "westus2", "centralus")
+      * AZURE_SKU (e.g., "F1" for free, "B1" for basic, "P1V2" for premium)
+
+12) Create a pull request or commit directly (based on permissions):
     - Branch name: `ci-cd-pipeline-setup`
     - Commit message: "feat: Add automated CI/CD pipeline for [detected tech stack]"
     - PR title: "🚀 Add CI/CD Pipeline with Auto-Detection"
@@ -227,15 +251,21 @@ Instructions:
       - Detected tech stack summary
       - Pipeline capabilities
       - Required secrets to configure
+      - Azure setup instructions (if applicable)
       - Next steps for team
 
-12) Validate the generated workflow:
+13) Validate the generated workflow:
     - Check YAML syntax
     - Verify all actions use pinned versions or major version tags
     - Ensure secrets are referenced correctly
     - Validate matrix configurations
     - Verify dependency installation commands are correct for detected package managers
     - Ensure all lockfiles are checked in (package-lock.json, yarn.lock, etc.)
+    - For Azure deployment:
+      * Verify `azure/login@v2` is used (not v1)
+      * Confirm `enable-AzPSSession: false` is set
+      * Validate AZURE_CREDENTIALS format matches requirements (4 fields)
+      * Ensure all 5 Azure secrets are documented
 
 ## Phase 3.5: Dependency Installation Examples in Generated Workflow
 
@@ -355,7 +385,7 @@ Instructions:
 ```
 
 ## Phase 4: Output and Summary
-13) Provide a comprehensive summary including:
+14) Provide a comprehensive summary including:
     - **Detected Technologies**: Languages, frameworks, tools with versions
     - **Dependencies**: Runtime and dev dependencies count
     - **Build Configuration**: Commands, scripts, environment requirements
@@ -363,6 +393,11 @@ Instructions:
     - **Pipeline Features**: Stages included, deployment target
     - **Generated Files**: List with descriptions
     - **Required Actions**: Secrets to configure, repository settings to enable
+    - **Azure Setup Steps** (if applicable):
+      * Run setup script: `.\scripts\setup-azure-webapp-secrets.ps1`
+      * Copy entire AZURE_CREDENTIALS JSON (including braces) to GitHub Secrets
+      * Configure remaining 4 Azure secrets
+      * Reference: `docs/AZURE-WEBAPP-DEPLOYMENT.md` for detailed instructions
     - **Workflow URL**: Direct link to the workflow file in GitHub
     - **Next Steps**: How to trigger first build, monitoring instructions
 
@@ -434,8 +469,11 @@ Expected Output:
     "DEPLOYMENT.md"
   ],
   "requiredSecrets": [
-    "AZURE_WEBAPP_PUBLISH_PROFILE",
-    "AZURE_CREDENTIALS"
+    "AZURE_CREDENTIALS",
+    "AZURE_RESOURCE_GROUP",
+    "AZURE_WEBAPP_NAME",
+    "AZURE_LOCATION",
+    "AZURE_SKU"
   ],
   "pullRequest": {
     "number": 42,
@@ -467,6 +505,12 @@ Error Handling:
 - If unsupported framework: Generate basic template and document manual steps
 - If deployment target invalid: Fall back to build-only pipeline
 - If workflow creation fails: Provide YAML content for manual creation
+- If Azure login fails with "Not all values are present":
+  * Verify AZURE_CREDENTIALS JSON has all 4 required fields (clientId, clientSecret, subscriptionId, tenantId)
+  * Run validation tool: `.\scripts\test-azure-credentials-format.ps1`
+  * Re-run setup script: `.\scripts\setup-azure-webapp-secrets.ps1`
+  * Ensure entire JSON (including braces) is copied to GitHub Secret
+  * Reference: `docs/AZURE-LOGIN-FIX.md` or `QUICKFIX-AZURE-LOGIN.md`
 
 Security Considerations:
 - Never commit secrets or credentials to the repository
@@ -475,14 +519,28 @@ Security Considerations:
 - Suggest dependabot configuration for dependency updates
 - Include security scanning stages
 - Use OIDC for cloud provider authentication when possible
+- For Azure deployment:
+  * Never commit AZURE_CREDENTIALS JSON to Git
+  * Use Service Principal with minimum required permissions (Contributor role on Resource Group)
+  * Rotate Service Principal secrets regularly
+  * Use `azure/login@v2` (latest version) with `enable-AzPSSession: false`
+  * Store all Azure secrets in GitHub Secrets, never in code or .env files
+  * Consider using Azure Managed Identity for enhanced security (advanced)
 
 Best Practices Applied:
-- Pin action versions for reproducibility
+- Pin action versions for reproducibility (e.g., `azure/login@v2`, not `@latest`)
 - Use caching to speed up builds
 - Implement fail-fast strategies
 - Generate clear, commented workflow files
 - Include build status badges
 - Document all manual setup steps
 - Provide troubleshooting guidance
+- For Azure deployments:
+  * Automatically create Azure resources if they don't exist (idempotent)
+  * Detect tech stack and configure appropriate Azure runtime
+  * Use Linux App Service Plans for better pricing (F1 free tier available)
+  * Include comprehensive logging for debugging
+  * Validate all secrets are set before deployment
+  * Provide clear error messages for missing configuration
 
 ```
