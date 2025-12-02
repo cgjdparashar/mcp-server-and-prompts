@@ -82,7 +82,92 @@ Instructions:
    - Set up language runtime (actions/setup-node, actions/setup-python, actions/setup-java, actions/setup-dotnet)
    - Specify correct versions from detected configuration
    - Cache dependencies (npm, pip, maven, gradle, nuget)
-   - Install dependencies with correct package manager
+   
+   **Automatic Dependency Installation (CRITICAL - Must Include):**
+   Install ALL required dependencies based on detected tech stack:
+   
+   - **Node.js/JavaScript/TypeScript:**
+     - If `package-lock.json` exists: `npm ci` (clean install, faster, reproducible)
+     - If `yarn.lock` exists: `yarn install --frozen-lockfile`
+     - If `pnpm-lock.yaml` exists: `pnpm install --frozen-lockfile`
+     - If only `package.json`: `npm install` (create lockfile if missing)
+     - Install global tools if needed: `npm install -g typescript eslint prettier`
+   
+   - **Python:**
+     - If `requirements.txt`: `pip install -r requirements.txt`
+     - If `pyproject.toml` with Poetry: `poetry install --no-root`
+     - If `Pipfile` with Pipenv: `pipenv install --dev`
+     - If `setup.py`: `pip install -e .` (editable install)
+     - Upgrade pip first: `python -m pip install --upgrade pip`
+     - Install build tools: `pip install build wheel setuptools`
+   
+   - **Java:**
+     - If Maven (`pom.xml`): `mvn clean install -DskipTests` (install dependencies)
+     - If Gradle (`build.gradle`): `./gradlew build --no-daemon` (includes dependency download)
+     - Use dependency caching for faster builds
+     - Install Maven/Gradle wrappers if present
+   
+   - **.NET/C#:**
+     - Restore NuGet packages: `dotnet restore`
+     - If multiple projects: `dotnet restore YourSolution.sln`
+     - Install workload if needed: `dotnet workload restore`
+     - Install global tools: `dotnet tool restore`
+   
+   - **Go:**
+     - Download dependencies: `go mod download`
+     - Verify dependencies: `go mod verify`
+     - Tidy dependencies: `go mod tidy`
+   
+   - **Ruby:**
+     - Install Bundler: `gem install bundler`
+     - Install gems: `bundle install --jobs=4 --retry=3`
+     - Use specific Bundler version if in Gemfile.lock
+   
+   - **PHP:**
+     - Install Composer dependencies: `composer install --no-interaction --prefer-dist --optimize-autoloader`
+     - For production: `composer install --no-dev --no-interaction`
+   
+   - **Rust:**
+     - Dependencies auto-installed with: `cargo build`
+     - Update dependencies: `cargo update`
+     - Check dependencies: `cargo check`
+   
+   **Additional Dependencies (Install as needed):**
+   - **System packages** (via apt/yum): Database clients, libraries, tools
+     - Example: `sudo apt-get update && sudo apt-get install -y libpq-dev`
+   - **Docker**: If Dockerfile exists, ensure Docker is available
+   - **Database drivers**: Install specific database client libraries
+   - **Build tools**: Make, CMake, GCC, etc. if native compilation needed
+   - **Testing tools**: Install test runners, browsers for E2E tests
+   
+   **Conditional Dependency Installation:**
+   ```yaml
+   - name: Check for package.json
+     id: check-nodejs
+     run: |
+       if [ -f "package.json" ]; then
+         echo "has_nodejs=true" >> $GITHUB_OUTPUT
+       else
+         echo "has_nodejs=false" >> $GITHUB_OUTPUT
+       fi
+   
+   - name: Install Node.js dependencies
+     if: steps.check-nodejs.outputs.has_nodejs == 'true'
+     run: |
+       if [ -f "package-lock.json" ]; then
+         npm ci
+       elif [ -f "yarn.lock" ]; then
+         yarn install --frozen-lockfile
+       elif [ -f "pnpm-lock.yaml" ]; then
+         pnpm install --frozen-lockfile
+       else
+         npm install
+       fi
+   ```
+   
+   **Post-Dependency Installation:**
+   - Verify installations: Check key binaries/packages are available
+   - Display installed versions for debugging
    - Run build commands
    - Run linting/code quality checks if configured
    
@@ -141,6 +226,125 @@ Instructions:
     - Verify all actions use pinned versions or major version tags
     - Ensure secrets are referenced correctly
     - Validate matrix configurations
+    - Verify dependency installation commands are correct for detected package managers
+    - Ensure all lockfiles are checked in (package-lock.json, yarn.lock, etc.)
+
+## Phase 3.5: Dependency Installation Examples in Generated Workflow
+
+**Example 1: Node.js with npm (Most Common)**
+```yaml
+- name: Setup Node.js
+  uses: actions/setup-node@v4
+  with:
+    node-version: '18.x'
+    cache: 'npm'  # Enable caching
+
+- name: Install dependencies
+  run: npm ci  # Clean install using lockfile
+  
+- name: Build application
+  run: npm run build
+```
+
+**Example 2: Python with requirements.txt**
+```yaml
+- name: Setup Python
+  uses: actions/setup-python@v5
+  with:
+    python-version: '3.11'
+    cache: 'pip'
+
+- name: Upgrade pip
+  run: python -m pip install --upgrade pip
+
+- name: Install dependencies
+  run: |
+    pip install -r requirements.txt
+    pip install pytest pytest-cov  # Additional test dependencies
+```
+
+**Example 3: Java with Maven**
+```yaml
+- name: Setup Java
+  uses: actions/setup-java@v4
+  with:
+    java-version: '17'
+    distribution: 'temurin'
+    cache: 'maven'
+
+- name: Build with Maven
+  run: mvn clean install -DskipTests  # Install dependencies and build
+```
+
+**Example 4: Multi-Language Project (Node.js + Python)**
+```yaml
+- name: Setup Node.js
+  uses: actions/setup-node@v4
+  with:
+    node-version: '18.x'
+
+- name: Setup Python
+  uses: actions/setup-python@v5
+  with:
+    python-version: '3.11'
+
+- name: Install Node.js dependencies
+  working-directory: ./frontend
+  run: npm ci
+
+- name: Install Python dependencies
+  working-directory: ./backend
+  run: pip install -r requirements.txt
+```
+
+**Example 5: Conditional Installation (No Dependencies)**
+```yaml
+- name: Check for dependencies
+  id: check-deps
+  run: |
+    if [ -f "package.json" ]; then
+      echo "has_nodejs=true" >> $GITHUB_OUTPUT
+    fi
+    if [ -f "requirements.txt" ]; then
+      echo "has_python=true" >> $GITHUB_OUTPUT
+    fi
+
+- name: Setup Node.js
+  if: steps.check-deps.outputs.has_nodejs == 'true'
+  uses: actions/setup-node@v4
+  with:
+    node-version: '18.x'
+    cache: 'npm'
+
+- name: Install Node.js dependencies
+  if: steps.check-deps.outputs.has_nodejs == 'true'
+  run: npm ci
+
+- name: Setup Python
+  if: steps.check-deps.outputs.has_python == 'true'
+  uses: actions/setup-python@v5
+  with:
+    python-version: '3.11'
+    cache: 'pip'
+
+- name: Install Python dependencies
+  if: steps.check-deps.outputs.has_python == 'true'
+  run: pip install -r requirements.txt
+```
+
+**Example 6: System Dependencies**
+```yaml
+- name: Install system dependencies
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y \
+      libpq-dev \
+      postgresql-client \
+      build-essential
+
+- name: Install application dependencies
+  run: npm ci
+```
 
 ## Phase 4: Output and Summary
 13) Provide a comprehensive summary including:
