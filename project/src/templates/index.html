@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Order Dashboard{% endblock %}
+
+{% block header_actions %}
+    <a href="{{ url_for('orders.create') }}" class="btn">+ Create New Order</a>
+{% endblock %}
+
+{% block content %}
+    {% if orders %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Order #</th>
+                    <th>Customer</th>
+                    <th>Product</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                    <tr>
+                        <td><strong>{{ order.order_number }}</strong></td>
+                        <td>{{ order.customer_name }}</td>
+                        <td>{{ order.product_name }}</td>
+                        <td>{{ order.quantity }}</td>
+                        <td>${{ "%.2f"|format(order.price) }}</td>
+                        <td><strong>${{ "%.2f"|format(order.total) }}</strong></td>
+                        <td>
+                            <select class="status-select" data-order-id="{{ order.id }}" 
+                                    onchange="updateStatus({{ order.id }}, this.value)">
+                                <option value="Pending" {% if order.status == 'Pending' %}selected{% endif %}>Pending</option>
+                                <option value="Processing" {% if order.status == 'Processing' %}selected{% endif %}>Processing</option>
+                                <option value="Completed" {% if order.status == 'Completed' %}selected{% endif %}>Completed</option>
+                                <option value="Cancelled" {% if order.status == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+                            </select>
+                        </td>
+                        <td>{{ order.order_date.strftime('%Y-%m-%d %H:%M') if order.order_date else 'N/A' }}</td>
+                        <td>
+                            <a href="{{ url_for('orders.edit', order_id=order.id) }}" 
+                               class="btn btn-small">Edit</a>
+                            <form method="POST" action="{{ url_for('orders.delete', order_id=order.id) }}" 
+                                  style="display: inline;" 
+                                  onsubmit="return confirm('Are you sure you want to delete order {{ order.order_number }}?');">
+                                <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <h2>No orders yet</h2>
+            <p>Click "Create New Order" to get started</p>
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function updateStatus(orderId, newStatus) {
+        fetch(`/update-status/${orderId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status: newStatus })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success feedback (optional)
+                console.log('Status updated successfully');
+            } else {
+                alert('Error updating status: ' + data.message);
+                // Reload page to reset dropdown
+                location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error updating status');
+            location.reload();
+        });
+    }
+</script>
+{% endblock %}

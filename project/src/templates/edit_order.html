@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Order{% endblock %}
+
+{% block header %}Edit Order: {{ order.order_number }}{% endblock %}
+
+{% block content %}
+    <form method="POST" action="{{ url_for('orders.edit', order_id=order.id) }}">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="order_number">Order Number</label>
+                <input type="text" id="order_number" name="order_number" 
+                       value="{{ order.order_number }}" readonly 
+                       style="background: #f8f9fa;">
+                <small style="color: #6c757d;">Order number cannot be changed</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="status">Status</label>
+                <select id="status" name="status">
+                    <option value="Pending" {% if order.status == 'Pending' %}selected{% endif %}>Pending</option>
+                    <option value="Processing" {% if order.status == 'Processing' %}selected{% endif %}>Processing</option>
+                    <option value="Completed" {% if order.status == 'Completed' %}selected{% endif %}>Completed</option>
+                    <option value="Cancelled" {% if order.status == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="customer_name">Customer Name *</label>
+                <input type="text" id="customer_name" name="customer_name" required 
+                       value="{{ order.customer_name }}" placeholder="e.g., John Doe">
+            </div>
+            
+            <div class="form-group">
+                <label for="product_name">Product Name *</label>
+                <input type="text" id="product_name" name="product_name" required 
+                       value="{{ order.product_name }}" placeholder="e.g., Widget Pro">
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="quantity">Quantity *</label>
+                <input type="number" id="quantity" name="quantity" min="1" required 
+                       value="{{ order.quantity }}" oninput="calculateTotal()">
+            </div>
+            
+            <div class="form-group">
+                <label for="price">Price (per unit) *</label>
+                <input type="number" id="price" name="price" min="0" step="0.01" required 
+                       value="{{ '%.2f'|format(order.price) }}" oninput="calculateTotal()">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="total">Total Amount</label>
+            <input type="text" id="total" name="total" readonly 
+                   style="background: #f8f9fa; font-weight: bold;" 
+                   value="${{ '%.2f'|format(order.total) }}">
+        </div>
+        
+        <div class="form-group">
+            <label for="notes">Notes (Optional)</label>
+            <textarea id="notes" name="notes" placeholder="Additional notes or comments...">{{ order.notes or '' }}</textarea>
+        </div>
+        
+        <div class="form-group">
+            <button type="submit" class="btn">Update Order</button>
+            <a href="{{ url_for('orders.index') }}" class="btn" 
+               style="background: #6c757d; margin-left: 10px;">Cancel</a>
+        </div>
+    </form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function calculateTotal() {
+        const quantity = parseFloat(document.getElementById('quantity').value) || 0;
+        const price = parseFloat(document.getElementById('price').value) || 0;
+        const total = quantity * price;
+        document.getElementById('total').value = '$' + total.toFixed(2);
+    }
+    
+    // Initialize total on page load
+    document.addEventListener('DOMContentLoaded', calculateTotal);
+</script>
+{% endblock %}

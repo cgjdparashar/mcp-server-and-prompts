@@ -30,7 +30,7 @@
 			"MYSQL_PORT=3306",
 			"MYSQL_USER=modersweadmin",
 			"MYSQL_PASS=admin@123",
-			"MYSQL_DB=thaistar",
+			"MYSQL_DB=dashboard",
 			"ALLOW_INSERT_OPERATION=true",
 			"ALLOW_UPDATE_OPERATION=true",
 			"ALLOW_DELETE_OPERATION=true",
