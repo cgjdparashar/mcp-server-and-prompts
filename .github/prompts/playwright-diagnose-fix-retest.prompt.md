@@ -4,10 +4,20 @@ Goal: Execute a user-provided application flow using the Playwright MCP server, 
 
 Preconditions:
 - Playwright MCP server is configured and authenticated.
-- The application code is editable by this agent (via MCP client’s file ops or provided patch instructions).
+- Application code exists in `/src` folder and is editable by this agent (via MCP client's file ops or provided patch instructions).
 - Flow steps, selectors, and expected outcomes are provided as parameters.
 
 Instructions:
+0) Analyze application context:
+   - Check if `/src` folder exists at workspace root
+   - If `/src` exists: Read `/src/README.md` to understand application structure, architecture, and features
+   - Scan `/src` folder to identify:
+     * Application entry point and main modules
+     * Route definitions, handlers, and endpoints
+     * HTML templates/components with form fields and selectors
+     * Static assets, CSS classes, and JavaScript files
+     * Database models and API integrations
+   - Use this context to understand expected application behavior and identify potential fix locations
 1) Accept and validate parameters:
    - `BASE_URL`: starting URL (required)
    - `STEPS`: ordered array of actions (same schema as run-flow prompt)
@@ -21,15 +31,22 @@ Instructions:
 2) Run the flow:
    - Initialize Playwright via MCP server with `HEADLESS`, `VIEWPORT`.
    - Navigate to `BASE_URL` and execute `STEPS`, recording per-step results and artifacts if `TRACE=true`.
+   - Cross-reference selectors with code from `/src` folder when available
 3) Diagnose failures:
    - If any step fails, collect: screenshot, console logs, network errors, selector state.
    - Classify failure (navigation timeout, selector not found, assertion failed, network error).
+   - Analyze `/src` code to understand root cause:
+     * Check if selector exists in templates (e.g., `/src/templates/*.html`)
+     * Review route handlers for missing endpoints or logic errors (e.g., `/src/routes.py`, `/src/app.py`)
+     * Examine database queries for data issues (e.g., `/src/models.py`, `/src/database.py`)
+     * Identify JavaScript errors in static files (e.g., `/src/static/*.js`)
 4) Apply fix based on `FIX_STRATEGY`:
-   - `patch`: Apply file changes using `PATCH_INSTRUCTIONS` if provided; otherwise propose minimal fix (e.g., adjust selector, add await/waitFor, handle null states) and apply via MCP client file ops.
+   - `patch`: Apply file changes in `/src` folder using `PATCH_INSTRUCTIONS` if provided; otherwise propose minimal fix based on `/src` code analysis (e.g., fix selector in template, correct route handler logic, add missing validation, fix database query) and apply via MCP client file ops.
    - `env`: Adjust environment variables or feature flags exposed to the app (if available) and relaunch.
    - `retry`: Add waits or retries for flaky steps (respect `RETRY_POLICY`).
    - `none`: Skip fix and proceed to retest to confirm reproducibility.
-   - Record the fix steps performed.
+   - Record the fix steps performed with specific file paths in `/src`
+   - Update `/src/README.md` if fix changes application behavior or requires new setup steps
 5) Retest the flow:
    - Reinitialize context and execute `STEPS` again.
    - Record results and artifacts; compare pass/fail counts.
@@ -53,8 +70,9 @@ Parameters:
 - `RETRY_POLICY`: optional object
 
 Expected Output:
+- `context`: { srcFolderExists: boolean, filesAnalyzed: [string], appType: string }
 - `run`: { totalSteps, passed, failed, elapsedMs, artifacts }
-- `diagnosis`: { failureType, failingStepIndex, message, evidence: { screenshot?, logs?, network? } }
+- `diagnosis`: { failureType, failingStepIndex, message, rootCause: string, evidence: { screenshot?, logs?, network?, codeLocation?: string } }
 - `fix`: { strategy, changes?: [ { file, description } ], envChanges?: [ { key, value } ], notes }
 - `retest`: { totalSteps, passed, failed, elapsedMs, artifacts }
 - `result`: `fixed|not-fixed|no-failures`
@@ -72,5 +90,8 @@ Example `STEPS`:
 ```
 
 Usage Notes:
-- Provide `PATCH_INSTRUCTIONS` when you already know the fix; otherwise the agent will propose minimal, safe changes.
+- Prompt will analyze `/src` folder first to understand application structure and identify fix locations
+- Provide `PATCH_INSTRUCTIONS` when you already know the fix; otherwise the agent will analyze `/src` code and propose minimal, safe changes.
+- Fixes are applied directly to files in `/src` folder based on code analysis
+- `/src/README.md` is updated if fix changes application behavior
 - If your MCP server exposes app-specific patch endpoints, reference them in `PATCH_INSTRUCTIONS`.

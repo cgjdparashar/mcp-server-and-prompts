@@ -1,6 +1,6 @@
-Title: Get Azure DevOps Task Details by ID
+Title: Get Azure DevOps Work Item Details by ID
 
-Goal: Retrieve comprehensive details for a single Azure DevOps work item (task) by its ID, formatted for quick review and MCP client display.
+Goal: Retrieve comprehensive details for a single Azure DevOps work item (User Story, Bug, Task, Issue, Epic, Feature, etc.) by its ID, formatted for quick review and MCP client display.
 
 Preconditions:
 - MCP Azure DevOps server is configured and authenticated.
@@ -10,7 +10,7 @@ Preconditions:
 
 Instructions:
 1) Validate `WORK_ITEM_ID` is provided and numeric. If missing/invalid, return an explicit error.
-2) Fetch the work item by ID with these fields:
+2) Fetch the work item by ID (supports all work item types: User Story, Bug, Task, Issue, Epic, Feature, Test Case, etc.) with these fields:
    - Core: `System.Id`, `System.Title`, `System.WorkItemType`, `System.State`, `System.AssignedTo`, `System.AreaPath`, `System.IterationPath`
    - Planning: `Microsoft.VSTS.Common.Priority`, `Microsoft.VSTS.Common.StackRank`
    - Effort: `Microsoft.VSTS.Scheduling.RemainingWork`, `Microsoft.VSTS.Scheduling.OriginalEstimate`

@@ -4,9 +4,20 @@ Goal: Execute a user-provided application flow using the Playwright MCP server a
 
 Preconditions:
 - Playwright MCP server is configured and authenticated.
+- Application code exists in `/src` folder for context and analysis.
 - The flow steps, selectors, and expected outcomes are provided as parameters to this prompt.
 
 Instructions:
+0) Analyze application context:
+   - Check if `/src` folder exists at workspace root
+   - If `/src` exists: Read `/src/README.md` to understand application structure, routes, and features
+   - Scan `/src` folder to identify:
+     * Application entry point (e.g., `/src/app.py`, `/src/index.js`, `/src/main.ts`)
+     * Route definitions and endpoints
+     * HTML templates/components (e.g., `/src/templates/`, `/src/components/`)
+     * Form fields, input names, button selectors from code
+     * Static assets and CSS classes from `/src/static/`
+   - Use this context to validate selectors and understand expected application behavior
 1) Accept and validate parameters:
    - `BASE_URL`: starting URL (required)
    - `STEPS`: ordered array of actions; each step includes:
@@ -22,12 +33,14 @@ Instructions:
 2) Initialize a browser context via the Playwright MCP server with `HEADLESS` and `VIEWPORT`.
 3) Navigate to `BASE_URL` and honor `waitUntil` if provided in the first step.
 4) For each step in `STEPS`:
+   - Cross-reference selectors with code from `/src` folder when available to ensure accuracy
    - Perform the action, honoring `timeoutMs`.
    - For `waitFor`, wait for selector/state (`visible|hidden|attached|detached`).
    - For `assert`, evaluate the assertion and record pass/fail with details.
    - If an action fails, record the error and continue only if `CONTINUE_ON_ERROR=true` (default false).
 5) If `TRACE=true`, collect artifacts exposed by the MCP server (screenshots per step, console logs, network events) and include references/paths in output.
 6) Close the browser context and return a structured summary.
+7) Include context from `/src` analysis in notes (e.g., "Based on /src/templates/login.html, validated selector #username")
 
 Validation & Safety:
 - No test files are created; this is an ephemeral run.
@@ -62,6 +75,8 @@ Example `STEPS`:
 ```
 
 Usage Notes:
+- Prompt will analyze `/src` folder first to understand application structure and validate selectors
 - Provide `BASE_URL` and a well-defined `STEPS` array; selectors should match your app.
+- If `/src` folder exists, selectors will be cross-referenced with application code for accuracy
 - Use `TRACE=true` to capture screenshots/logs if supported by your MCP server.
 - Set `CONTINUE_ON_ERROR=true` to gather more step results when debugging flows.

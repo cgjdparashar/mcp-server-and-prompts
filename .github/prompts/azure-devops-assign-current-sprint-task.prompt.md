@@ -1,11 +1,11 @@
-Title: Show my tasks from the current sprint
+Title: Show my work items from the current sprint
 
-Goal: Fetch all work items assigned to me in the current sprint.
+Goal: Fetch all work items assigned to me in the current sprint (User Stories, Bugs, Tasks, Issues, etc.).
 
 Preconditions:
 - MCP Azure DevOps server is connected and authenticated.
 - Environment variables available: `AZDO_ORG_URL`, `AZDO_PROJECT`, `AZDO_TEAM`, `AZDO_USER_EMAIL`.
-- Optional variables: `AZDO_AREA_PATH`, `AZDO_WORK_ITEM_TYPES` (comma-separated; default: User Story,Bug,Task,Issue), `AZDO_PRIORITY_MIN` (default: 0), `AZDO_PRIORITY_MAX` (default: 4).
+- Optional variables: `AZDO_AREA_PATH`, `AZDO_WORK_ITEM_TYPES` (comma-separated; default: "User Story,Bug,Task,Issue,Epic,Feature" - supports all work item types), `AZDO_PRIORITY_MIN` (default: 0), `AZDO_PRIORITY_MAX` (default: 4).
 - **Setup Script**: Run `scripts/prompts/set-azure-devops-env.ps1` to automatically configure all required environment variables.
 
 System/Tool Context:
@@ -18,7 +18,7 @@ Instructions:
 2) Get all work items for that specific iteration using the iteration ID.
 3) Filter the work items to only include those that are:
    - Assigned To equals `AZDO_USER_EMAIL`
-   - Type in `AZDO_WORK_ITEM_TYPES` (default: User Story, Bug, Task, Issue)
+   - Type in `AZDO_WORK_ITEM_TYPES` (default: User Story, Bug, Task, Issue, Epic, Feature - supports all work item types)
    - State not in Done/Closed/Removed
    - Iteration Path matches the current sprint iteration path (must be exact match, not parent iteration)
    - Optional: `Area Path` equals `AZDO_AREA_PATH` if provided
@@ -36,7 +36,7 @@ Instructions:
    - URL to the item
 
 Parameters (defaults):
-- `AZDO_WORK_ITEM_TYPES`: "User Story,Bug,Task,Issue"
+- `AZDO_WORK_ITEM_TYPES`: "User Story,Bug,Task,Issue,Epic,Feature" (supports all Azure DevOps work item types)
 - `AZDO_PRIORITY_MIN`: 0
 - `AZDO_PRIORITY_MAX`: 4
 
