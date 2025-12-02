@@ -111,28 +111,71 @@ if ($existingSp) {
 
 # Create new Service Principal with proper JSON format
 Write-Host "Creating new Service Principal..." -ForegroundColor Cyan
+
+# Try with --sdk-auth first (older Azure CLI versions)
 $spJson = az ad sp create-for-rbac `
     --name $spName `
     --role contributor `
     --scopes /subscriptions/$subscription/resourceGroups/$resourceGroup `
-    --sdk-auth
+    --sdk-auth 2>&1
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Failed to create Service Principal!" -ForegroundColor Red
-    Write-Host "Please check your Azure permissions and try again." -ForegroundColor Yellow
-    exit 1
-}
-
-# Parse the JSON to validate it
-try {
-    $spObject = $spJson | ConvertFrom-Json
-    Write-Host "✅ Service Principal created successfully" -ForegroundColor Green
-    Write-Host "   Client ID: $($spObject.clientId)" -ForegroundColor Gray
-    Write-Host "   Tenant ID: $($spObject.tenantId)" -ForegroundColor Gray
-} catch {
-    Write-Host "❌ Invalid Service Principal JSON!" -ForegroundColor Red
-    Write-Host "Output: $spJson" -ForegroundColor Yellow
-    exit 1
+# Check if --sdk-auth failed (newer Azure CLI versions)
+if ($LASTEXITCODE -ne 0 -or $spJson -like "*--sdk-auth*deprecated*" -or $spJson -like "*unrecognized arguments*") {
+    Write-Host "⚠️  --sdk-auth flag not supported, using standard format..." -ForegroundColor Yellow
+    
+    # Create without --sdk-auth and manually format the JSON
+    $spOutput = az ad sp create-for-rbac `
+        --name $spName `
+        --role contributor `
+        --scopes /subscriptions/$subscription/resourceGroups/$resourceGroup `
+        --output json 2>&1
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ Failed to create Service Principal!" -ForegroundColor Red
+        Write-Host "Output: $spOutput" -ForegroundColor Yellow
+        Write-Host "Please check your Azure permissions and try again." -ForegroundColor Yellow
+        exit 1
+    }
+    
+    # Parse the output and create the required format
+    try {
+        $sp = $spOutput | ConvertFrom-Json
+        
+        # Create the JSON format required by azure/login action
+        $spJson = @{
+            clientId = $sp.appId
+            clientSecret = $sp.password
+            subscriptionId = $subscription
+            tenantId = $sp.tenant
+        } | ConvertTo-Json -Compress
+        
+        Write-Host "✅ Service Principal created successfully" -ForegroundColor Green
+        Write-Host "   Client ID: $($sp.appId)" -ForegroundColor Gray
+        Write-Host "   Tenant ID: $($sp.tenant)" -ForegroundColor Gray
+    } catch {
+        Write-Host "❌ Failed to parse Service Principal output!" -ForegroundColor Red
+        Write-Host "Output: $spOutput" -ForegroundColor Yellow
+        exit 1
+    }
+} else {
+    # --sdk-auth worked, validate the JSON
+    try {
+        $spObject = $spJson | ConvertFrom-Json
+        
+        # Validate all required fields are present
+        if (-not $spObject.clientId -or -not $spObject.clientSecret -or -not $spObject.subscriptionId -or -not $spObject.tenantId) {
+            throw "Missing required fields in Service Principal JSON"
+        }
+        
+        Write-Host "✅ Service Principal created successfully" -ForegroundColor Green
+        Write-Host "   Client ID: $($spObject.clientId)" -ForegroundColor Gray
+        Write-Host "   Tenant ID: $($spObject.tenantId)" -ForegroundColor Gray
+        Write-Host "   Subscription ID: $($spObject.subscriptionId)" -ForegroundColor Gray
+    } catch {
+        Write-Host "❌ Invalid Service Principal JSON!" -ForegroundColor Red
+        Write-Host "Output: $spJson" -ForegroundColor Yellow
+        exit 1
+    }
 }
 
 # Output GitHub Secrets
@@ -149,9 +192,21 @@ Write-Host ""
 
 Write-Host "1️⃣  AZURE_CREDENTIALS" -ForegroundColor Cyan
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkGray
-Write-Host "Copy the ENTIRE JSON object below (including { and }):" -ForegroundColor Yellow
 Write-Host ""
-Write-Host $spJson -ForegroundColor White
+Write-Host "⚠️  CRITICAL: Copy the ENTIRE JSON below (from { to } including both braces):" -ForegroundColor Yellow -BackgroundColor DarkRed
+Write-Host ""
+
+# Pretty print the JSON for better readability
+$spJsonPretty = $spJson | ConvertFrom-Json | ConvertTo-Json -Depth 10
+Write-Host $spJsonPretty -ForegroundColor White
+
+Write-Host ""
+Write-Host "✅ Verify the JSON has ALL 4 fields:" -ForegroundColor Green
+$spObj = $spJson | ConvertFrom-Json
+Write-Host "   ✓ clientId: $($spObj.clientId)" -ForegroundColor Gray
+Write-Host "   ✓ clientSecret: $(if($spObj.clientSecret){'[PRESENT]'}else{'[MISSING]'})" -ForegroundColor Gray
+Write-Host "   ✓ subscriptionId: $($spObj.subscriptionId)" -ForegroundColor Gray
+Write-Host "   ✓ tenantId: $($spObj.tenantId)" -ForegroundColor Gray
 Write-Host ""
 
 Write-Host "2️⃣  AZURE_RESOURCE_GROUP" -ForegroundColor Cyan
@@ -220,9 +275,36 @@ Write-Host "   https://$webappName.azurewebsites.net" -ForegroundColor Yellow
 Write-Host ""
 
 Write-Host "✅ Setup complete!" -ForegroundColor Green
+Write-Host ""
+
+# Test the Service Principal credentials
+Write-Host "🧪 Testing Service Principal credentials..." -ForegroundColor Cyan
+$spTestObj = $spJson | ConvertFrom-Json
+$testLogin = az login --service-principal `
+    --username $spTestObj.clientId `
+    --password $spTestObj.clientSecret `
+    --tenant $spTestObj.tenantId 2>&1
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "✅ Service Principal credentials are valid and working!" -ForegroundColor Green
+    # Switch back to user account
+    az logout 2>$null
+    az login --output none 2>&1 | Out-Null
+} else {
+    Write-Host "⚠️  Warning: Could not verify Service Principal credentials" -ForegroundColor Yellow
+    Write-Host "   This might be a temporary issue. The credentials should still work in GitHub Actions." -ForegroundColor Gray
+}
+Write-Host ""
 
 # Prompt to open GitHub
 $openGithub = Read-Host "Open GitHub secrets page in browser? (Y/n)"
 if ($openGithub -ne 'n' -and $openGithub -ne 'N') {
     Start-Process "https://github.com/$githubRepo/settings/secrets/actions"
 }
+
+Write-Host ""
+Write-Host "=" -ForegroundColor Cyan -NoNewline
+Write-Host ("=" * 78) -ForegroundColor Cyan
+Write-Host "⚠️  REMINDER: Copy the ENTIRE JSON for AZURE_CREDENTIALS (including { and })" -ForegroundColor Yellow -BackgroundColor DarkRed
+Write-Host "=" -ForegroundColor Cyan -NoNewline
+Write-Host ("=" * 78) -ForegroundColor Cyan
