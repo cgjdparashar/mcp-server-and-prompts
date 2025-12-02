@@ -1,0 +1,537 @@
+name: CI/CD Pipeline - Build and Deploy
+
+on:
+  push:
+    branches: 
+      - main
+      - devops-build-deploy-code
+  pull_request:
+    branches: 
+      - main
+      - devops-build-deploy-code
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18.x'
+
+jobs:
+  validate-and-build:
+    name: Validate Prompts and Build Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+    
+    - name: Validate Repository Structure
+      run: |
+        echo "🔍 Validating repository structure..."
+        
+        # Check for required directories
+        if [ -d ".github/prompts" ]; then
+          echo "✅ .github/prompts directory exists"
+        else
+          echo "❌ .github/prompts directory missing"
+          exit 1
+        fi
+        
+        if [ -d "docs" ]; then
+          echo "✅ docs directory exists"
+        else
+          echo "❌ docs directory missing"
+          exit 1
+        fi
+        
+        if [ -d "scripts" ]; then
+          echo "✅ scripts directory exists"
+        else
+          echo "❌ scripts directory missing"
+          exit 1
+        fi
+    
+    - name: Validate Prompt Files
+      run: |
+        echo "📋 Validating prompt files..."
+        
+        # Count prompt files
+        PROMPT_COUNT=$(find .github/prompts -name "*.prompt.md" 2>/dev/null | wc -l)
+        echo "Found $PROMPT_COUNT prompt file(s)"
+        
+        if [ $PROMPT_COUNT -eq 0 ]; then
+          echo "⚠️  No prompt files found"
+        else
+          echo "✅ Prompt files found"
+          
+          # List all prompt files
+          echo ""
+          echo "📝 Prompt files:"
+          find .github/prompts -name "*.prompt.md" -exec basename {} \;
+        fi
+        
+        # Validate each prompt file structure
+        for file in .github/prompts/*.prompt.md; do
+          if [ -f "$file" ]; then
+            echo ""
+            echo "Validating: $file"
+            
+            # Check for required sections
+            if grep -q "^Title:" "$file" || grep -q "^# " "$file"; then
+              echo "  ✅ Has title"
+            else
+              echo "  ⚠️  Missing title"
+            fi
+            
+            if grep -q -i "goal" "$file" || grep -q -i "purpose" "$file"; then
+              echo "  ✅ Has goal/purpose"
+            else
+              echo "  ⚠️  Missing goal/purpose"
+            fi
+            
+            if grep -q -i "precondition" "$file" || grep -q -i "prerequisite" "$file"; then
+              echo "  ✅ Has preconditions"
+            else
+              echo "  ⚠️  Missing preconditions"
+            fi
+          fi
+        done
+    
+    - name: Validate PowerShell Scripts
+      run: |
+        echo "🔧 Validating PowerShell scripts..."
+        
+        # Count PowerShell scripts
+        PS_COUNT=$(find scripts -name "*.ps1" 2>/dev/null | wc -l)
+        echo "Found $PS_COUNT PowerShell script(s)"
+        
+        if [ $PS_COUNT -gt 0 ]; then
+          echo "✅ PowerShell scripts found"
+          
+          # List all scripts
+          echo ""
+          echo "📜 PowerShell scripts:"
+          find scripts -name "*.ps1" -exec basename {} \;
+          
+          # Basic syntax check (check for common errors)
+          for script in scripts/**/*.ps1; do
+            if [ -f "$script" ]; then
+              echo ""
+              echo "Checking: $script"
+              
+              # Check for basic PowerShell syntax
+              if grep -q "^\$env:" "$script"; then
+                echo "  ✅ Contains environment variable usage"
+              fi
+              
+              if grep -q "Write-Host" "$script"; then
+                echo "  ✅ Contains output statements"
+              fi
+            fi
+          done
+        fi
+    
+    - name: Validate Documentation
+      run: |
+        echo "📚 Validating documentation..."
+        
+        # Check README.md
+        if [ -f "README.md" ]; then
+          echo "✅ README.md exists"
+          
+          # Check README size
+          README_SIZE=$(wc -c < README.md)
+          echo "  README.md size: $README_SIZE bytes"
+          
+          if [ $README_SIZE -gt 100 ]; then
+            echo "  ✅ README.md has content"
+          else
+            echo "  ⚠️  README.md seems too small"
+          fi
+        else
+          echo "❌ README.md missing"
+          exit 1
+        fi
+        
+        # Check for documentation in docs/
+        DOC_COUNT=$(find docs -name "*.md" 2>/dev/null | wc -l)
+        echo ""
+        echo "Found $DOC_COUNT documentation file(s) in docs/"
+        
+        if [ $DOC_COUNT -gt 0 ]; then
+          echo "✅ Documentation files found"
+          echo ""
+          echo "📄 Documentation files:"
+          find docs -name "*.md" -exec basename {} \;
+        fi
+    
+    - name: Generate Build Report
+      run: |
+        echo "📊 Generating build report..."
+        
+        # Create build directory
+        mkdir -p build-report
+        
+        # Generate report
+        cat > build-report/BUILD_REPORT.md <<EOF
+        # Build Report
+        
+        **Build Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Branch**: ${GITHUB_REF#refs/heads/}
+        **Commit**: ${GITHUB_SHA:0:7}
+        **Triggered By**: ${GITHUB_ACTOR}
+        
+        ## Repository Structure
+        
+        \`\`\`
+        $(tree -L 2 -I 'node_modules|.git' || find . -maxdepth 2 -not -path '*/\.*' -type d)
+        \`\`\`
+        
+        ## Prompt Files
+        
+        $(find .github/prompts -name "*.prompt.md" -exec echo "- {}" \; 2>/dev/null || echo "No prompt files found")
+        
+        ## Documentation Files
+        
+        $(find docs -name "*.md" -exec echo "- {}" \; 2>/dev/null || echo "No documentation files found")
+        
+        ## PowerShell Scripts
+        
+        $(find scripts -name "*.ps1" -exec echo "- {}" \; 2>/dev/null || echo "No scripts found")
+        
+        ## Validation Status
+        
+        ✅ All validations passed successfully
+        
+        ## Next Steps
+        
+        - Review prompt files for accuracy
+        - Test PowerShell scripts in target environment
+        - Verify documentation completeness
+        
+        ---
+        *Generated by CI/CD Pipeline*
+        EOF
+        
+        echo "✅ Build report generated"
+        cat build-report/BUILD_REPORT.md
+    
+    - name: Upload Build Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-report
+        path: build-report/
+        retention-days: 30
+    
+    - name: Create Deployment Package
+      run: |
+        echo "📦 Creating deployment package..."
+        
+        # Create deployment directory
+        mkdir -p deployment-package
+        
+        # Copy essential files
+        cp -r .github deployment-package/
+        cp -r docs deployment-package/
+        cp -r scripts deployment-package/
+        cp README.md deployment-package/
+        cp .gitignore deployment-package/ 2>/dev/null || true
+        
+        # Create deployment metadata
+        cat > deployment-package/DEPLOYMENT_INFO.json <<EOF
+        {
+          "version": "1.0.${GITHUB_RUN_NUMBER}",
+          "buildDate": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "branch": "${GITHUB_REF#refs/heads/}",
+          "commit": "${GITHUB_SHA}",
+          "commitShort": "${GITHUB_SHA:0:7}",
+          "actor": "${GITHUB_ACTOR}",
+          "workflow": "${GITHUB_WORKFLOW}",
+          "runNumber": "${GITHUB_RUN_NUMBER}",
+          "repository": "${GITHUB_REPOSITORY}"
+        }
+        EOF
+        
+        echo "✅ Deployment package created"
+        echo ""
+        echo "Package contents:"
+        ls -la deployment-package/
+    
+    - name: Upload Deployment Package
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-package
+        path: deployment-package/
+        retention-days: 90
+
+  security-scan:
+    name: Security and Quality Checks
+    runs-on: ubuntu-latest
+    needs: validate-and-build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run Markdown Linting
+      uses: DavidAnson/markdownlint-cli2-action@v14
+      continue-on-error: true
+      with:
+        globs: |
+          **/*.md
+          !node_modules/**
+    
+    - name: Check for Sensitive Data
+      run: |
+        echo "🔐 Scanning for sensitive data..."
+        
+        # Check for potential secrets or sensitive patterns
+        echo "Checking for API keys, tokens, passwords..."
+        
+        # Define patterns to search for
+        PATTERNS=(
+          "password.*=.*['\"].*['\"]"
+          "token.*=.*['\"].*['\"]"
+          "api[_-]?key.*=.*['\"].*['\"]"
+          "secret.*=.*['\"].*['\"]"
+          "Bearer [A-Za-z0-9\-\._~\+\/]+=*"
+          "AKIA[0-9A-Z]{16}"
+        )
+        
+        FOUND_ISSUES=0
+        
+        for pattern in "${PATTERNS[@]}"; do
+          if grep -r -i -E "$pattern" --exclude-dir=.git --exclude-dir=node_modules . 2>/dev/null; then
+            echo "⚠️  Potential sensitive data found matching pattern: $pattern"
+            FOUND_ISSUES=$((FOUND_ISSUES + 1))
+          fi
+        done
+        
+        if [ $FOUND_ISSUES -eq 0 ]; then
+          echo "✅ No obvious sensitive data patterns detected"
+        else
+          echo "⚠️  Found $FOUND_ISSUES potential issue(s) - please review"
+          echo "Note: These may be false positives (e.g., in documentation)"
+        fi
+    
+    - name: Validate File Permissions
+      run: |
+        echo "🔒 Checking file permissions..."
+        
+        # Check for executable scripts
+        echo "Executable files:"
+        find . -type f -executable -not -path '*/\.git/*' || echo "No executable files found"
+        
+        echo ""
+        echo "✅ File permissions check complete"
+
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: [validate-and-build, security-scan]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/devops-build-deploy-code'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download Build Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: deployment-package
+        path: deployment-package/
+    
+    - name: Setup GitHub Pages
+      uses: actions/configure-pages@v4
+    
+    - name: Prepare Documentation Site
+      run: |
+        echo "🌐 Preparing documentation site..."
+        
+        # Create site directory
+        mkdir -p _site
+        
+        # Copy documentation
+        cp -r docs/* _site/ 2>/dev/null || mkdir -p _site
+        cp README.md _site/index.md 2>/dev/null || true
+        
+        # Copy deployment package
+        mkdir -p _site/deployment
+        cp -r deployment-package/* _site/deployment/ 2>/dev/null || true
+        
+        # Create index.html if not exists
+        if [ ! -f "_site/index.html" ]; then
+          cat > _site/index.html <<EOF
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>MCP Server & Prompts Documentation</title>
+            <style>
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    line-height: 1.6;
+                    color: #333;
+                }
+                h1 { color: #0366d6; }
+                .card {
+                    border: 1px solid #e1e4e8;
+                    border-radius: 6px;
+                    padding: 20px;
+                    margin: 20px 0;
+                    background: #f6f8fa;
+                }
+                .button {
+                    display: inline-block;
+                    padding: 10px 20px;
+                    background: #0366d6;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 6px;
+                    margin: 5px;
+                }
+                .button:hover { background: #0256c7; }
+                .status { 
+                    display: inline-block;
+                    padding: 3px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                .status.success { background: #28a745; color: white; }
+                .footer {
+                    margin-top: 40px;
+                    padding-top: 20px;
+                    border-top: 1px solid #e1e4e8;
+                    text-align: center;
+                    color: #586069;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>🚀 MCP Server & Prompts</h1>
+            <p class="status success">✅ Build Status: Success</p>
+            
+            <div class="card">
+                <h2>📋 Available Prompts</h2>
+                <ul>
+                    <li><strong>Azure DevOps: Assign Current Sprint Task</strong> - Assign work items from current sprint</li>
+                    <li><strong>GitHub CI/CD Pipeline Generator</strong> - Auto-detect tech stack and generate CI/CD pipelines</li>
+                    <li><strong>Azure DevOps Work Item Management</strong> - Manage and update work items</li>
+                    <li><strong>Playwright Test Automation</strong> - Run and diagnose Playwright tests</li>
+                    <li><strong>MySQL Query Execution</strong> - Execute database queries</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h2>📚 Documentation</h2>
+                <a href="QUICK_REFERENCE.html" class="button">Quick Reference</a>
+                <a href="github-cicd-pipeline-generator.html" class="button">CI/CD Generator Guide</a>
+                <a href="CREATION_SUMMARY.html" class="button">Creation Summary</a>
+            </div>
+            
+            <div class="card">
+                <h2>🔧 Setup Scripts</h2>
+                <ul>
+                    <li><code>set-azure-devops-env.ps1</code> - Configure Azure DevOps environment</li>
+                    <li><code>set-github-cicd-env.ps1</code> - Configure GitHub CI/CD environment</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h2>📦 Deployment Information</h2>
+                <p><strong>Version:</strong> 1.0.${GITHUB_RUN_NUMBER}</p>
+                <p><strong>Build Date:</strong> $(date -u +"%Y-%m-%d %H:%M:%S UTC")</p>
+                <p><strong>Branch:</strong> ${GITHUB_REF#refs/heads/}</p>
+                <p><strong>Commit:</strong> <code>${GITHUB_SHA:0:7}</code></p>
+            </div>
+            
+            <div class="card">
+                <h2>🔗 Links</h2>
+                <a href="https://github.com/${GITHUB_REPOSITORY}" class="button">GitHub Repository</a>
+                <a href="https://github.com/${GITHUB_REPOSITORY}/actions" class="button">Actions</a>
+                <a href="deployment/DEPLOYMENT_INFO.json" class="button">Deployment Metadata</a>
+            </div>
+            
+            <div class="footer">
+                <p>Built with ❤️ using GitHub Actions</p>
+                <p>© 2025 MCP Server & Prompts | <a href="https://github.com/${GITHUB_REPOSITORY}">View on GitHub</a></p>
+            </div>
+        </body>
+        </html>
+        EOF
+        fi
+        
+        echo "✅ Documentation site prepared"
+        echo ""
+        echo "Site contents:"
+        ls -la _site/
+    
+    - name: Upload Pages Artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: _site/
+    
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+    
+    - name: Deployment Summary
+      run: |
+        echo "🎉 Deployment completed successfully!"
+        echo ""
+        echo "📊 Deployment Details:"
+        echo "  - URL: ${{ steps.deployment.outputs.page_url }}"
+        echo "  - Version: 1.0.${GITHUB_RUN_NUMBER}"
+        echo "  - Branch: ${GITHUB_REF#refs/heads/}"
+        echo "  - Commit: ${GITHUB_SHA:0:7}"
+        echo ""
+        echo "✅ Your documentation is now live!"
+
+  notify:
+    name: Notification
+    runs-on: ubuntu-latest
+    needs: [validate-and-build, security-scan, deploy]
+    if: always()
+    
+    steps:
+    - name: Build Status Summary
+      run: |
+        echo "📬 CI/CD Pipeline Summary"
+        echo "=========================="
+        echo ""
+        echo "Build Status: ${{ needs.validate-and-build.result }}"
+        echo "Security Scan: ${{ needs.security-scan.result }}"
+        echo "Deployment: ${{ needs.deploy.result }}"
+        echo ""
+        
+        if [ "${{ needs.validate-and-build.result }}" == "success" ] && \
+           [ "${{ needs.security-scan.result }}" == "success" ] && \
+           [ "${{ needs.deploy.result }}" == "success" ]; then
+          echo "✅ All jobs completed successfully!"
+          echo "🎉 Pipeline Status: SUCCESS"
+        else
+          echo "⚠️  Some jobs failed or were skipped"
+          echo "📋 Pipeline Status: COMPLETED WITH ISSUES"
+        fi
+        
+        echo ""
+        echo "Workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"

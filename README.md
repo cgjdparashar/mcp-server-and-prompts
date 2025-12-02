@@ -1,9 +1,32 @@
-MCP Server & Prompts
+# MCP Server & Prompts
 
-Azure DevOps: Assign Current Sprint Task
+[![CI/CD Pipeline](https://github.com/cgjdparashar/mcp-server-and-prompts/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/cgjdparashar/mcp-server-and-prompts/actions/workflows/ci-cd-pipeline.yml)
 
-- Purpose: A reusable prompt for the Azure DevOps MCP server to find an unassigned work item in the current sprint and assign it to you.
-- Prompt file: `prompts/azure-devops-assign-current-sprint-task.prompt.md`
+**Automated Build & Deployment**: This repository includes a complete CI/CD pipeline that validates prompts, runs security checks, and deploys documentation automatically.
+
+## Available Prompts
+
+### 1. Azure DevOps: Assign Current Sprint Task
+
+- **Purpose**: A reusable prompt for the Azure DevOps MCP server to find an unassigned work item in the current sprint and assign it to you.
+- **Prompt file**: `.github/prompts/azure-devops-assign-current-sprint-task.prompt.md`
+
+### 2. GitHub CI/CD Pipeline Generator
+
+- **Purpose**: Automatically detect your repository's technology stack and generate a complete CI/CD pipeline using GitHub Actions with build, test, and deployment stages.
+- **Prompt file**: `.github/prompts/github-cicd-pipeline-generator.prompt.md`
+- **Documentation**: [`docs/github-cicd-pipeline-generator.md`](docs/github-cicd-pipeline-generator.md)
+- **Setup script**: `scripts/prompts/set-github-cicd-env.ps1`
+- **Features**:
+  - Detects tech stack (Node.js, Python, Java, .NET, Go, Ruby, PHP, Rust)
+  - Identifies frameworks (React, Angular, Vue, Next.js, Django, Spring Boot, etc.)
+  - Generates complete GitHub Actions workflow with build, test, security scanning
+  - Supports deployment to Azure, AWS, Docker, GitHub Pages
+  - Creates documentation and configuration templates
+
+---
+
+## Azure DevOps: Assign Current Sprint Task
 
 Prerequisites
 - Azure DevOps MCP server configured and connected in your MCP client.
