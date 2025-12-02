@@ -43,29 +43,39 @@ Instructions:
    - Identify required dependencies and configurations
    - Create a todo list for tracking progress
 6) Execute full implementation:
+   - **CRITICAL: All files MUST be within `/project` folder - no exceptions**
    - Check if `/project` folder exists at workspace root:
      * If `/project` folder does NOT exist: Create `/project` folder and `/project/src` subfolder
      * If `/project` folder exists: Check if `/project/src` exists and use existing structure
-   - All application code, modules, and components MUST be implemented inside `/project/src` folder
+   - **Strict folder structure enforcement:**
+     * ALL application code MUST go in `/project/src/` folder
+     * ALL configuration files MUST go in `/project/` folder (root of project)
+     * NO files created outside `/project/` - not even temporary files
+     * NO files at workspace root - everything inside `/project/`
    - Create project structure (folders within `/project/src`, configuration files in `/project`)
-   - Initialize project with specified tools (e.g., `uv init`, `npm init`, etc.) in `/project`
-   - Install and configure dependencies (requirements.txt, package.json, etc. in `/project`)
-   - Implement all required features and components inside `/project/src` folder:
+   - Initialize project with specified tools (e.g., `uv init`, `npm init`, etc.) inside `/project` folder only
+   - Install and configure dependencies (requirements.txt, package.json, pyproject.toml, etc. in `/project/`)
+   - Implement all required features and components inside `/project/src/` folder:
      * For existing projects: Follow existing code patterns, naming conventions, and architecture
      * For new projects: Establish clean architecture and best practices
-   - Create database schemas/migrations inside `/project/src` if needed
-   - Write configuration files in `/project` (.env.example, config files)
-   - Add error handling and validation in `/project/src` code
+     * All modules, components, utilities, models, views, controllers go in `/project/src/`
+   - Create database schemas/migrations inside `/project/src/` if needed
+   - Write ALL configuration files in `/project/` root (.env.example, config.json, .env, etc.)
+   - Add error handling and validation in `/project/src/` code
    - Update or create `/project/src/README.md`:
      * For existing projects: Update `/project/src/README.md` with new features, changes, updated usage instructions
      * For new projects: Create comprehensive `/project/src/README.md` documenting code structure, modules, components
    - Create `/project/README.md` with setup and usage instructions (if not exists)
    - Add inline code comments for clarity
+   - **Double-check: Verify NO files created outside `/project/` folder before proceeding**
 7) Validate implementation:
    - Verify all acceptance criteria are met
    - Ensure code follows specified conventions
-   - Check that all files are in correct locations
+   - **MANDATORY: Check that ALL files are within `/project/` folder - reject any files outside**
+   - Verify application code is in `/project/src/`
+   - Verify configuration files are in `/project/`
    - Validate configuration completeness
+   - Confirm NO files exist at workspace root or any other location outside `/project/`
 8) Update work item status:
    - **ALWAYS** add a detailed comment to the work item documenting:
      * Implementation summary
@@ -89,10 +99,12 @@ Instructions:
 Validation & Safety:
 - **Implementation Mode**: ALWAYS create files and implement the solution (no dry-run mode)
 - **Work Item Updates**: ALWAYS update work item with comment and status change to "Done"
-- Create all files in appropriate workspace location
+- **CRITICAL RULE**: Create ALL files within `/project/` folder ONLY - NO exceptions, NO files outside `/project/`
+- **Folder Enforcement**: All code in `/project/src/`, all config in `/project/`, nothing at workspace root
 - Use version control best practices if git repo detected
 - Handle errors gracefully and report clearly
 - Ensure all deliverables are completed before updating work item status
+- Before finalizing, verify no files were created outside `/project/` folder
 
 Parameters:
 - `WORK_ITEM_ID`: required (number) - The Azure DevOps work item ID to implement
@@ -130,16 +142,41 @@ Example Usage Notes:
   
   # Then trigger this prompt with work item ID
   # The prompt handles everything automatically
-  ```
-
 Implementation Patterns:
-- **Folder Structure**: All projects created in `/project` folder, all application code in `/project/src`
-- **New Project Structure**: `/project` (root), `/project/src` (code), `/project/README.md` (user docs), `/project/src/README.md` (technical docs)
+- **Folder Structure (STRICTLY ENFORCED)**: 
+  * **ALL files MUST be within `/project/` folder**
+  * **ALL application code MUST be in `/project/src/`**
+  * **ALL configuration MUST be in `/project/` root**
+  * **NO files at workspace root or outside `/project/`**
+- **New Project Structure**: 
+  * `/project/` (root - contains all config files)
+  * `/project/src/` (all application code)
+  * `/project/README.md` (user docs)
+  * `/project/src/README.md` (technical docs)
+  * Example: `/project/pyproject.toml`, `/project/.env.example`, `/project/package.json` (configs in project root)
+  * Example: `/project/src/main.py`, `/project/src/models/`, `/project/src/utils/` (code in src)
 - **Existing Project Context**: Always read `/project/src/README.md` first to understand existing architecture, then maintain consistency
 - **Documentation**: Update `/project/src/README.md` with all new features, changes, and usage instructions
-- Python projects: Use specified tools (uv, pip, poetry), follow PEP standards, code in `/project/src`
-- Node.js: Use npm/yarn, follow package.json conventions, code in `/project/src`
-- Web apps: Organize within `/project/src` (e.g., `/project/src/routes`, `/project/src/models`, `/project/src/static`, `/project/src/templates`)
-- Databases: Create schema files, connection utilities, migration scripts in `/project/src`
+- **Python projects**: 
+  * Config files: `/project/pyproject.toml`, `/project/requirements.txt`, `/project/.env.example`
+  * All code: `/project/src/` (main.py, modules, packages)
+  * Run commands from `/project/` directory
+- **Node.js projects**: 
+  * Config files: `/project/package.json`, `/project/.env.example`, `/project/tsconfig.json`
+  * All code: `/project/src/` (index.js, components, modules)
+  * Run commands from `/project/` directory
+- **Web apps**: 
+  * All code organized in `/project/src/` (e.g., `/project/src/routes/`, `/project/src/models/`, `/project/src/static/`, `/project/src/templates/`)
+  * Configs in `/project/` (e.g., `/project/.env.example`)
+- **Databases**: 
+  * Schema files, connection utilities, migration scripts in `/project/src/db/` or `/project/src/migrations/`
+  * Database config in `/project/.env.example` or `/project/config/`
+- **Configuration**: 
+  * Use `/project/.env.example`, `/project/config.json`, etc.
+  * Document all variables in `/project/README.md`
+- **Documentation**: 
+  * Clear README in `/project/README.md` with prerequisites, setup, usage, troubleshooting
+  * Technical docs in `/project/src/README.md`
+- **FINAL CHECK**: Before completing, verify the entire file tree shows ALL files within `/project/` folder only
 - Configuration: Use .env.example in `/project`, document all variables
 - Documentation: Clear README in `/project` with prerequisites, setup, usage, troubleshooting
